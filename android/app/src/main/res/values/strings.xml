@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Dnyanshree Exam App</string>
+    <string name="device_admin_description">Enables camera lock and anti-cheating restrictions during exams.</string>
+</resources>

@@ -1,0 +1,6 @@
+# Ignore root level config
+.env
+node_modules/
+
+# Mac OS
+.DS_Store

@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Proctored Examination System — Executive Presentation Guide</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --primary: #1a56db;
+      --primary-light: #e8effd;
+      --accent: #0e9f6e;
+      --accent-light: #def7ec;
+      --danger: #e02424;
+      --danger-light: #fde8e8;
+      --warning: #e3a008;
+      --warning-light: #fdf6b2;
+      --text: #1f2937;
+      --text-secondary: #6b7280;
+      --border: #e5e7eb;
+      --bg-light: #f9fafb;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      line-height: 1.7;
+      background: #fff;
+      padding: 0;
+    }
+
+    .page {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 48px;
+    }
+
+    /* Cover Page */
+    .cover {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 60px 48px;
+      background: linear-gradient(135deg, #1a56db 0%, #1e40af 50%, #1e3a8a 100%);
+      color: #fff;
+      page-break-after: always;
+    }
+    .cover-icon { font-size: 72px; margin-bottom: 24px; }
+    .cover h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px; }
+    .cover h2 { font-size: 20px; font-weight: 400; opacity: 0.85; margin-bottom: 48px; }
+    .cover-meta { font-size: 14px; opacity: 0.7; margin-top: 40px; line-height: 2; }
+    .cover-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 24px;
+      padding: 8px 28px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    /* Section Headings */
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary);
+      margin: 40px 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 24px 0 10px 0;
+      page-break-after: avoid;
+    }
+    h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin: 16px 0 8px 0;
+    }
+
+    p, li { font-size: 13.5px; margin-bottom: 8px; }
+    ul, ol { padding-left: 22px; }
+    strong { font-weight: 600; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px 0;
+      font-size: 13px;
+    }
+    th {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 14px;
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: var(--bg-light); }
+    th:first-child, td:first-child { width: 30%; }
+
+    /* Callout Boxes */
+    .callout {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: 13px;
+      page-break-inside: avoid;
+    }
+    .callout-info { background: var(--primary-light); border-left: 4px solid var(--primary); }
+    .callout-success { background: var(--accent-light); border-left: 4px solid var(--accent); }
+    .callout-warning { background: var(--warning-light); border-left: 4px solid var(--warning); }
+    .callout-danger { background: var(--danger-light); border-left: 4px solid var(--danger); }
+    .callout-title { font-weight: 700; margin-bottom: 4px; }
+
+    /* Flow Diagrams (CSS-based for print) */
+    .flow-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      align-items: center;
+      justify-content: center;
+      margin: 20px 0;
+      page-break-inside: avoid;
+    }
+    .flow-box {
+      background: var(--bg-light);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      text-align: center;
+      font-size: 12.5px;
+      font-weight: 500;
+      min-width: 130px;
+      max-width: 200px;
+    }
+    .flow-box.primary { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+    .flow-box.success { background: var(--accent-light); border-color: var(--accent); color: #065f46; }
+    .flow-box.danger { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+    .flow-box.warning { background: var(--warning-light); border-color: var(--warning); color: #92400e; }
+    .flow-arrow {
+      font-size: 22px;
+      color: var(--text-secondary);
+      padding: 0 6px;
+      font-weight: 700;
+    }
+
+    /* Pillar Cards */
+    .pillars {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin: 20px 0;
+    }
+    .pillar-card {
+      background: var(--bg-light);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+    .pillar-card .icon { font-size: 36px; margin-bottom: 8px; }
+    .pillar-card h4 { font-size: 14px; color: var(--primary); margin-bottom: 6px; }
+    .pillar-card p { font-size: 12px; color: var(--text-secondary); margin: 0; }
+
+    /* Timeline */
+    .timeline { margin: 20px 0; }
+    .timeline-item {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 4px;
+      page-break-inside: avoid;
+    }
+    .timeline-time {
+      min-width: 80px;
+      font-weight: 700;
+      font-size: 12.5px;
+      color: var(--primary);
+      text-align: right;
+      padding-top: 10px;
+    }
+    .timeline-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary);
+      margin-top: 14px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .timeline-item:not(:last-child) .timeline-dot::after {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 12px;
+      width: 2px;
+      height: 40px;
+      background: var(--border);
+    }
+    .timeline-content {
+      background: var(--bg-light);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 12.5px;
+      flex: 1;
+    }
+    .timeline-content strong { color: var(--text); }
+
+    /* Strike Diagram */
+    .strike-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 20px 0;
+      page-break-inside: avoid;
+    }
+    .strike-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .strike-badge {
+      min-width: 90px;
+      text-align: center;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .strike-badge.s1 { background: var(--warning); }
+    .strike-badge.s2 { background: #d97706; }
+    .strike-badge.s3 { background: var(--danger); }
+    .strike-badge.override { background: var(--accent); }
+    .strike-badge.fail { background: #7f1d1d; }
+    .strike-desc {
+      font-size: 12.5px;
+      padding: 8px 0;
+      flex: 1;
+    }
+    .strike-connector {
+      width: 2px;
+      height: 16px;
+      background: var(--border);
+      margin-left: 44px;
+    }
+
+    /* Comparison Columns */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+    .compare-col {
+      border-radius: 10px;
+      padding: 20px;
+      font-size: 12.5px;
+    }
+    .compare-col.bad { background: var(--danger-light); border: 1px solid #fca5a5; }
+    .compare-col.good { background: var(--accent-light); border: 1px solid #6ee7b7; }
+    .compare-col h4 { margin-bottom: 10px; font-size: 14px; }
+    .compare-col ul { padding-left: 18px; }
+    .compare-col li { margin-bottom: 6px; font-size: 12.5px; }
+
+    /* Page Break Helpers */
+    .page-break { page-break-before: always; }
+
+    /* Decision Box */
+    .decision-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+    .decision-card {
+      border-radius: 10px;
+      padding: 18px;
+      page-break-inside: avoid;
+    }
+    .decision-card.safe {
+      background: var(--accent-light);
+      border: 2px solid var(--accent);
+    }
+    .decision-card.unsafe {
+      background: var(--danger-light);
+      border: 2px solid var(--danger);
+    }
+    .decision-card h4 { margin-bottom: 8px; }
+    .decision-card ul { padding-left: 18px; }
+    .decision-card li { font-size: 12.5px; margin-bottom: 4px; }
+
+    /* FAQ */
+    .faq-item {
+      margin-bottom: 16px;
+      page-break-inside: avoid;
+    }
+    .faq-q {
+      font-weight: 700;
+      font-size: 13.5px;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .faq-a { font-size: 13px; color: var(--text-secondary); }
+
+    /* Print Styles */
+    @media print {
+      body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .cover { min-height: auto; padding: 120px 48px; }
+      .page { padding: 28px 36px; }
+      h2 { margin-top: 28px; }
+      .no-print { display: none; }
+    }
+
+    /* Footer */
+    .doc-footer {
+      text-align: center;
+      padding: 32px 0;
+      font-size: 11px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- COVER PAGE -->
+  <div class="cover">
+    <div class="cover-icon">🎓</div>
+    <div class="cover-badge">Confidential — For Internal Use</div>
+    <h1>Smart Proctored Examination System</h1>
+    <h2>Executive Presentation Guide</h2>
+    <p style="max-width:520px; opacity:0.8; font-size:14px; line-height:1.8;">
+      A comprehensive overview of our intelligent online examination platform — designed for institutional leadership, academic deans, examination controllers, and administrative authorities.
+    </p>
+    <div class="cover-meta">
+      Prepared by: Development Team<br>
+      Institution: Dnyanshree Institute<br>
+      Document Version: 1.0 &nbsp;|&nbsp; August 2026
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="page">
+
+    <!-- Section 1 -->
+    <h2>1. The Problem We Are Solving</h2>
+    <p>Traditional online examination methods have a fundamental weakness: <strong>the institution has no control over what a student does on their personal device during a test.</strong></p>
+
+    <div class="compare-grid">
+      <div class="compare-col bad">
+        <h4>Without Our System</h4>
+        <ul>
+          <li>Student minimizes exam to search Google</li>
+          <li>Screenshots shared on WhatsApp groups</li>
+          <li>Disconnecting internet "pauses" the clock</li>
+          <li>Same questions given if student retries</li>
+          <li>No live supervision — cheating found too late</li>
+          <li>Hours of manual MCQ paper grading</li>
+        </ul>
+      </div>
+      <div class="compare-col good">
+        <h4>With Our System</h4>
+        <ul>
+          <li>Phone becomes a single-purpose exam device</li>
+          <li>Screenshots produce completely black images</li>
+          <li>Server controls timer — disconnect does not help</li>
+          <li>Brand new question set assigned every retry</li>
+          <li>Faculty watches live with instant intervention</li>
+          <li>Automatic instant MCQ grading on submission</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Section 2 -->
+    <h2>2. System Architecture: Three Connected Pillars</h2>
+    <p>Our platform combines three intuitive tools working together in complete synergy:</p>
+
+    <div class="pillars">
+      <div class="pillar-card">
+        <div class="icon">📱</div>
+        <h4>Student Exam Shield</h4>
+        <p>Android mobile application that converts the phone into a locked exam kiosk. Only the exam screen is accessible.</p>
+      </div>
+      <div class="pillar-card">
+        <div class="icon">🖥️</div>
+        <h4>Teacher Command Center</h4>
+        <p>Web dashboard where educators create papers, schedule exams, monitor live progress, and manage violations.</p>
+      </div>
+      <div class="pillar-card">
+        <div class="icon">🤖</div>
+        <h4>Automated Cloud Referee</h4>
+        <p>Central server engine that manages timers, enforces rules, reassigns papers, and auto-submits expired exams.</p>
+      </div>
+    </div>
+
+    <div class="flow-container">
+      <div class="flow-box primary">📱 Student App</div>
+      <div class="flow-arrow">⟶</div>
+      <div class="flow-box" style="border-color: var(--primary); background: #dbeafe;">🤖 Cloud Referee</div>
+      <div class="flow-arrow">⟵</div>
+      <div class="flow-box primary">🖥️ Teacher Dashboard</div>
+    </div>
+
+    <!-- Section 3 -->
+    <h2>3. Who Can Access the System?</h2>
+    <p>Security begins well before a single question is displayed. Our platform includes multiple verification layers:</p>
+
+    <div class="flow-container" style="flex-direction: column; gap: 0;">
+      <div class="flow-box primary" style="max-width: 300px;">Person Attempts to Access System</div>
+      <div class="flow-arrow" style="transform: rotate(90deg); padding: 2px;">⟶</div>
+      <div class="flow-box warning" style="max-width: 360px;">Does their email belong to the institution? <br><small>(e.g. @dnyanshree.edu.in)</small></div>
+      <div style="display: flex; gap: 40px; margin-top: 4px;">
+        <div style="text-align: center;">
+          <div class="flow-arrow" style="transform: rotate(90deg); padding: 2px;">⟶</div>
+          <div class="flow-box success">Yes → OTP Verification → Exam Lobby</div>
+        </div>
+        <div style="text-align: center;">
+          <div class="flow-arrow" style="transform: rotate(90deg); padding: 2px;">⟶</div>
+          <div class="flow-box danger">No → ACCESS DENIED</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Key Access Controls:</h3>
+    <ul>
+      <li><strong>Institutional Email Whitelisting:</strong> Only accounts under the institution's official email domain are permitted. Personal Gmail, Yahoo, or Outlook accounts are automatically rejected.</li>
+      <li><strong>Phone OTP Verification:</strong> Each student profile is linked to a verified mobile number using one-time passwords, preventing impersonation.</li>
+      <li><strong>Device Administrator Permission:</strong> Students must grant the app special device privileges to disable the camera, prevent screenshots, and enforce lockdown. Without consent, the exam cannot begin.</li>
+    </ul>
+
+    <!-- Section 4 -->
+    <div class="page-break"></div>
+    <h2>4. Exam Lifecycle: From Creation to Results</h2>
+    <p>The complete journey of an examination follows five clear phases:</p>
+
+    <div class="flow-container">
+      <div class="flow-box primary">Phase 1<br><strong>CREATE</strong></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box primary">Phase 2<br><strong>SCHEDULE</strong></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box primary">Phase 3<br><strong>CONDUCT</strong></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box primary">Phase 4<br><strong>SUPERVISE</strong></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box primary">Phase 5<br><strong>RESULTS</strong></div>
+    </div>
+
+    <h3>Phase 1: Create — Question Paper Preparation</h3>
+    <ul>
+      <li>Faculty logs into the Teacher Command Center from any computer or laptop.</li>
+      <li>Creates a new exam paper by entering: <strong>Title</strong>, <strong>Subject</strong>, and <strong>Duration</strong> (in minutes).</li>
+      <li>Adds MCQ questions one by one, each with four options and the correct answer marked.</li>
+      <li>Questions can include text, mathematical formulas, circuit diagrams, or medical images.</li>
+      <li>All uploaded images are <strong>automatically compressed</strong> to ensure fast loading on slower networks.</li>
+    </ul>
+
+    <h3>Phase 2: Schedule — Timetable Configuration</h3>
+    <ul>
+      <li>Faculty sets the <strong>Opening Date and Time</strong> (e.g., Monday, 10:00 AM) and <strong>Closing Date and Time</strong> (e.g., Monday, 11:30 AM).</li>
+      <li>Students attempting to start outside this window are automatically blocked by the server.</li>
+      <li>Multiple papers can be created for the same subject (used for automatic reassignment if a student cheats).</li>
+    </ul>
+
+    <h3>Phase 3: Conduct — Student Takes the Exam</h3>
+    <ul>
+      <li>Student opens the app, signs in with institutional credentials, and enters the exam lobby.</li>
+      <li>Upon starting, the phone enters <strong>lockdown mode</strong>: camera disabled, screenshots blocked, AI assistants blocked.</li>
+      <li>Questions appear one at a time. After answering, the student taps "Next" and <strong>cannot return</strong> to previous questions.</li>
+      <li>A visible countdown timer shows time remaining.</li>
+    </ul>
+
+    <h3>Phase 4: Supervise — Faculty Monitors Live</h3>
+    <ul>
+      <li>Faculty sees a live table of every student currently taking the exam with color-coded status badges.</li>
+      <li>If a violation occurs, the student's row highlights immediately with warning indicators.</li>
+      <li>Faculty can click to review details and take action (override or malpractice) instantly.</li>
+    </ul>
+
+    <h3>Phase 5: Results — Automatic Scoring and Reports</h3>
+    <ul>
+      <li>All answers are scored instantly upon submission against the correct answer key.</li>
+      <li>Dashboard displays score distributions, batch averages, and violation history as visual charts.</li>
+      <li>Complete records can be downloaded as <strong>CSV/Excel spreadsheets</strong> for institutional archives.</li>
+    </ul>
+
+    <!-- Section 5 -->
+    <div class="page-break"></div>
+    <h2>5. Intelligent Anti-Cheat: Fair to Accidents, Strict on Cheating</h2>
+    <p>How does the system distinguish between a genuine emergency and a deliberate cheating attempt? It reads real-time hardware signals from the phone's operating system automatically:</p>
+
+    <div class="decision-grid">
+      <div class="decision-card safe">
+        <h4>SAFE — Zero Penalty</h4>
+        <ul>
+          <li><strong>Incoming Phone Call</strong> — Timer pauses. Student resumes after the call.</li>
+          <li><strong>Screen Lock / Sleep</strong> — Timer pauses. Student resumes after unlocking.</li>
+        </ul>
+        <p style="font-size: 12px; margin-top: 10px; color: #065f46;"><em>No warning recorded. No penalty. Completely safe.</em></p>
+      </div>
+      <div class="decision-card unsafe">
+        <h4>VIOLATION — Exam Terminated</h4>
+        <ul>
+          <li><strong>Home Button</strong> — Leaves exam to home screen.</li>
+          <li><strong>App Switch</strong> — Opens browser, calculator, or messaging.</li>
+          <li><strong>Notification Shade</strong> — Pulls down notification panel.</li>
+        </ul>
+        <p style="font-size: 12px; margin-top: 10px; color: #991b1b;"><em>Exam closes immediately. Warning strike recorded.</em></p>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Note</div>
+      These distinctions are made automatically using hardware-level signals. No manual configuration is needed by faculty, and no student input is required.
+    </div>
+
+    <h3>Key Security Features</h3>
+    <table>
+      <tr><th>Feature</th><th>How It Works</th></tr>
+      <tr><td>Screenshot and Recording Proof</td><td>Any capture attempt produces a completely black image. Questions cannot be photographed or shared digitally.</td></tr>
+      <tr><td>Camera and AI Lockdown</td><td>Phone camera hardware and AI overlays (Google Lens, Circle-to-Search) are disabled during the exam.</td></tr>
+      <tr><td>One-Way Question Flow</td><td>Once answered, students cannot go back. This prevents group cheating where later questions provide contextual clues.</td></tr>
+      <tr><td>Interactive Diagram Zoom</td><td>Students can pinch-to-zoom on circuit diagrams or medical images without leaving the secure exam screen.</td></tr>
+    </table>
+
+    <!-- Section 6 -->
+    <div class="page-break"></div>
+    <h2>6. The Three-Strike Rule: Managing Cheating</h2>
+    <p>When a student commits a violation, the system follows a structured, transparent, and fair escalation process:</p>
+
+    <div class="strike-flow">
+      <div class="strike-row">
+        <div class="strike-badge s1">STRIKE 1</div>
+        <div class="strike-desc">Student leaves exam to search for answers. <strong>Exam closes immediately.</strong> Student is signed out. Upon re-login, a <strong>completely new question set</strong> is assigned. Timer resumes at exact remaining time.</div>
+      </div>
+      <div class="strike-connector"></div>
+      <div class="strike-row">
+        <div class="strike-badge s2">STRIKE 2</div>
+        <div class="strike-desc">Student cheats again on the new paper. <strong>Exam closes again.</strong> Another new question set is assigned on re-login. Timer continues from exact point of violation.</div>
+      </div>
+      <div class="strike-connector"></div>
+      <div class="strike-row">
+        <div class="strike-badge s3">STRIKE 3</div>
+        <div class="strike-desc"><strong>HARD LOCKOUT.</strong> The student sees a red blocked screen. They cannot re-enter the exam. The case is escalated to the teacher's review queue.</div>
+      </div>
+      <div class="strike-connector"></div>
+      <div style="display: flex; gap: 12px; margin-top: 4px;">
+        <div class="strike-row" style="flex: 1;">
+          <div class="strike-badge override">OVERRIDE</div>
+          <div class="strike-desc">Teacher grants another chance with adjusted time and a fresh question set.</div>
+        </div>
+        <div class="strike-row" style="flex: 1;">
+          <div class="strike-badge fail">MALPRACTICE</div>
+          <div class="strike-desc">Teacher denies the attempt. Student is permanently disqualified.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Three Key Principles</div>
+      <strong>1. Fresh Questions Every Time</strong> — Cheating is futile because the student never sees the same questions again.<br>
+      <strong>2. Exact Time Preservation</strong> — If 4:30 remained at cheating, the new paper starts at exactly 4:30. No time gained or lost.<br>
+      <strong>3. Faculty Has Final Authority</strong> — The system locks the student, but the teacher decides whether to forgive or fail.
+    </div>
+
+    <!-- Section 7 -->
+    <div class="page-break"></div>
+    <h2>7. What Faculty and Administration Can See</h2>
+
+    <h3>Live Monitoring Dashboard</h3>
+    <table>
+      <tr><th>Information</th><th>Description</th></tr>
+      <tr><td>Student Name and ID</td><td>Which student is currently in the exam</td></tr>
+      <tr><td>Current Question</td><td>How far the student has progressed (e.g., Question 7 of 25)</td></tr>
+      <tr><td>Time Remaining</td><td>Live countdown showing exact seconds left</td></tr>
+      <tr><td>Status Badge</td><td>Color-coded: Active (green), Paused (yellow), Warning (orange), Blocked (red)</td></tr>
+      <tr><td>Violation Count</td><td>Number of warnings accumulated (0, 1, 2, or 3)</td></tr>
+      <tr><td>Quick Actions</td><td>One-click buttons: Review, Override, or Deny</td></tr>
+    </table>
+
+    <h3>Analytics and Reports</h3>
+    <table>
+      <tr><th>Feature</th><th>What It Shows</th></tr>
+      <tr><td>Score Distribution Chart</td><td>Bar graph showing how many students scored in each percentage range</td></tr>
+      <tr><td>Violation Frequency Graph</td><td>Trend line showing cheating attempt patterns across sessions</td></tr>
+      <tr><td>Batch Summary</td><td>Average scores, highest/lowest marks, completion rates</td></tr>
+      <tr><td>Individual Student Cards</td><td>Per-student breakdown: answers, time per question, violations</td></tr>
+      <tr><td>CSV/Excel Export</td><td>One-click download of complete exam data for institutional records</td></tr>
+    </table>
+
+    <!-- Section 8 -->
+    <h2>8. Institutional Benefits</h2>
+
+    <table>
+      <tr><th>Advantage</th><th>Explanation</th></tr>
+      <tr><td>Precise Scheduling</td><td>Set exact opening and closing times. The system enforces them automatically — no early birds, no latecomers.</td></tr>
+      <tr><td>Automatic Collection</td><td>When time expires, the exam auto-submits instantly. No "my internet was slow" excuses.</td></tr>
+      <tr><td>Bandwidth Friendly</td><td>All images are auto-compressed before delivery. Works on slow mobile data and congested campus Wi-Fi.</td></tr>
+      <tr><td>Real-Time Updates</td><td>Dashboard updates instantly without page refreshes. Faculty sees activity the moment it happens.</td></tr>
+      <tr><td>Instant Results</td><td>MCQ scoring happens automatically upon submission. No manual paper checking required.</td></tr>
+      <tr><td>Audit-Ready Archives</td><td>Complete exam history stored and downloadable, supporting NAAC, NBA, and internal audits.</td></tr>
+      <tr><td>No Special Hardware</td><td>Students use existing Android smartphones. No tablets, laptops, or lab computers needed.</td></tr>
+      <tr><td>Scalable</td><td>Cloud referee handles hundreds of simultaneous exam-takers without degradation.</td></tr>
+    </table>
+
+    <!-- Section 9 -->
+    <div class="page-break"></div>
+    <h2>9. Real-World Exam Day Walkthrough</h2>
+    <p>Here is a typical examination day from start to finish:</p>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-time">8:30 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content"><strong>Prof. Sharma</strong> logs into the Command Center from their office laptop. Reviews the 25-question MCQ paper on Basic Electronics.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">9:00 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">Prof. Sharma <strong>publishes the paper</strong> and sets the exam window: <strong>10:00 AM to 11:00 AM</strong> with a 45-minute duration.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">9:45 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">Students open the app. The lobby shows <em>"Basic Electronics — Starts at 10:00 AM"</em>. The Start button is greyed out.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">10:00 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content"><strong>Exam opens automatically.</strong> Students begin. Phones enter lockdown. The 45-minute server countdown begins.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">10:15 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content"><strong>Student Ravi</strong> presses Home to open Google. System instantly detects unauthorized exit. <span style="color: #e02424; font-weight: 600;">Ravi's exam closes. Strike 1.</span></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">10:16 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">Ravi logs back in. Server assigns a <strong>completely different question set</strong> (Paper B). Timer resumes at <strong>30 minutes remaining</strong>.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">10:35 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content"><strong>Student Priya</strong> receives a phone call from her parent. <span style="color: #0e9f6e; font-weight: 600;">Timer pauses automatically. No penalty.</span> She finishes the call and resumes.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">10:45 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">Most students finish and tap Submit. <strong>Scores calculated instantly.</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">11:00 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">Exam window closes. Any remaining active exams are <strong>auto-collected</strong> by the server.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">11:01 AM</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">Prof. Sharma opens the Analytics tab. <strong>Score charts are already generated.</strong> She downloads the CSV report for records.</div>
+      </div>
+    </div>
+
+    <!-- Section 10 -->
+    <div class="page-break"></div>
+    <h2>10. Frequently Asked Questions</h2>
+
+    <div class="faq-item">
+      <div class="faq-q">Q: Do students need expensive phones?</div>
+      <div class="faq-a">No. Any standard Android smartphone (Android 8.0 or newer) works. No special hardware is required.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: What if a student's phone battery dies mid-exam?</div>
+      <div class="faq-a">The server preserves their exact progress and remaining time. When the student charges and logs back in, they resume from where they left off with the same timer.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: Can students cheat by using two phones?</div>
+      <div class="faq-a">Each student account can only have one active session. Starting on a second device terminates the first. Screenshots are blocked, so there is nothing to photograph from a second device's camera.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: What if campus Wi-Fi goes down during an exam?</div>
+      <div class="faq-a">The server-side timer does not penalize network disconnections. Students reconnect and resume. All previously submitted answers are already saved on the server.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: Can the exam be taken on laptops or desktops?</div>
+      <div class="faq-a">The student app is Android-only by design. Web browsers cannot enforce the hardware-level security locks (camera disabling, screenshot blocking, app-switching prevention) that our anti-cheat model requires.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: How many students can take the exam simultaneously?</div>
+      <div class="faq-a">The cloud infrastructure scales automatically. Hundreds of concurrent students are supported without performance issues.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: Is student data secure?</div>
+      <div class="faq-a">Yes. All communication is encrypted. Student answers are stored in secured cloud databases with role-based access controls. Only authorized faculty can view results.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q: Can multiple departments use this simultaneously?</div>
+      <div class="faq-a">Absolutely. Each paper is tagged with a subject and can be independently scheduled. Multiple departments can run exams simultaneously without any interference.</div>
+    </div>
+
+    <!-- Section 11 -->
+    <h2>11. Future Roadmap</h2>
+
+    <table>
+      <tr><th>Planned Enhancement</th><th>Description</th></tr>
+      <tr><td>Push Notifications</td><td>Students receive instant mobile alerts when exam schedules are published or when a teacher grants an override.</td></tr>
+      <tr><td>Parent/Guardian Portal</td><td>A read-only view where parents can see their ward's exam results and attendance records.</td></tr>
+      <tr><td>Multi-Language Support</td><td>Question papers displayed in regional languages (Marathi, Hindi) alongside English.</td></tr>
+      <tr><td>Offline Exam Mode</td><td>For locations with unreliable internet, answers cached locally and synced when connectivity returns.</td></tr>
+      <tr><td>Advanced Analytics</td><td>Question-level difficulty analysis, topic-wise performance breakdowns, and semester-over-semester trends.</td></tr>
+    </table>
+
+    <!-- Footer -->
+    <div class="doc-footer">
+      Smart Proctored Examination System &nbsp;&middot;&nbsp; Dnyanshree Institute &nbsp;&middot;&nbsp; Document Version 1.0 &nbsp;&middot;&nbsp; August 2026<br>
+      <em>This document is confidential and intended for internal institutional use only.</em>
+    </div>
+
+  </div>
+
+</body>
+</html>
