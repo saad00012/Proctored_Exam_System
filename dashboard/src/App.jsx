@@ -545,64 +545,72 @@ function App() {
         const liveAlerts = getLiveAlerts();
 
         return (
-          <div>
-            <h2 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Welcome to Dnyanshree Exam Portal</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              {role === 'superadmin' 
-                ? 'Super Admin Command Console: Manage email domains whitelists, register teacher accounts, and review global system policies.'
-                : 'Teacher Console: Conduct secure, proctored examinations. Monitor active student screens and review warnings.'}
-            </p>
-            
+          <div className="fade-in">
+            <div className="page-header">
+              <h2>Welcome back 👋</h2>
+              <p>
+                {role === 'superadmin'
+                  ? 'Super Admin Command Console — manage email domains, register teachers, and configure global exam policies.'
+                  : 'Teacher Console — conduct secure proctored exams, monitor active student sessions, and review violations.'}
+              </p>
+            </div>
+
             {role === 'superadmin' ? (
-              <div className="grid-cols-1-3" style={{ marginBottom: '2.5rem' }}>
-                <div className="glass-card">
-                  <span className="badge badge-success" style={{ marginBottom: '1rem' }}>Active</span>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>Live Exam Sessions</h3>
-                  <p style={{ fontSize: '2.5rem', fontWeight: 700, marginTop: '0.5rem', color: 'var(--primary)' }}>
-                    {activeSessionsCount}
-                  </p>
-                </div>
-                
-                <div className="glass-card">
-                  <span className="badge badge-info" style={{ marginBottom: '1rem' }}>Faculty</span>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>Total Teachers</h3>
-                  <p style={{ fontSize: '2.5rem', fontWeight: 700, marginTop: '0.5rem' }}>
-                    {teachers.length}
-                  </p>
+              <div className="grid-cols-1-3" style={{ marginBottom: '2rem' }}>
+                <div className="stat-card">
+                  <div className="flex-between">
+                    <span className="stat-label">Live Sessions</span>
+                    <span className="badge badge-success">Active</span>
+                  </div>
+                  <div className="stat-number" style={{ color: 'var(--primary)' }}>{activeSessionsCount}</div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Students currently in exam</p>
                 </div>
 
-                <div className="glass-card">
-                  <span className="badge badge-warning" style={{ marginBottom: '1rem' }}>Whitelists</span>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>Allowed Domains</h3>
-                  <p style={{ fontSize: '2.5rem', fontWeight: 700, marginTop: '0.5rem', color: 'var(--accent)' }}>
-                    {allowedDomains.length}
-                  </p>
+                <div className="stat-card">
+                  <div className="flex-between">
+                    <span className="stat-label">Faculty</span>
+                    <span className="badge badge-info">Registered</span>
+                  </div>
+                  <div className="stat-number">{teachers.length}</div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Total teacher accounts</p>
+                </div>
+
+                <div className="stat-card">
+                  <div className="flex-between">
+                    <span className="stat-label">Domains</span>
+                    <span className="badge badge-warning">Whitelisted</span>
+                  </div>
+                  <div className="stat-number">{allowedDomains.length}</div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Active email domain rules</p>
                 </div>
               </div>
             ) : (
-              <div className="grid-cols-1-3" style={{ marginBottom: '2.5rem' }}>
-                <div className="glass-card">
-                  <span className="badge badge-success" style={{ marginBottom: '1rem' }}>Live</span>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>Active Sessions</h3>
-                  <p style={{ fontSize: '2.5rem', fontWeight: 700, marginTop: '0.5rem', color: 'var(--primary)' }}>
-                    {activeSessionsCount}
-                  </p>
-                </div>
-                
-                <div className="glass-card">
-                  <span className="badge badge-info" style={{ marginBottom: '1rem' }}>Storage</span>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>MCQ Question Papers</h3>
-                  <p style={{ fontSize: '2.5rem', fontWeight: 700, marginTop: '0.5rem' }}>
-                    {papersCount}
-                  </p>
+              <div className="grid-cols-1-3" style={{ marginBottom: '2rem' }}>
+                <div className="stat-card">
+                  <div className="flex-between">
+                    <span className="stat-label">Active Sessions</span>
+                    <span className="badge badge-success">Live</span>
+                  </div>
+                  <div className="stat-number" style={{ color: 'var(--primary)' }}>{activeSessionsCount}</div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Students currently in exam</p>
                 </div>
 
-                <div className="glass-card" style={{ border: blockedCount > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-color)' }}>
-                  <span className="badge badge-danger" style={{ marginBottom: '1rem' }}>Urgent</span>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-secondary)' }}>Pending Review (Blocked)</h3>
-                  <p style={{ fontSize: '2.5rem', fontWeight: 700, marginTop: '0.5rem', color: blockedCount > 0 ? '#ef4444' : 'inherit' }}>
-                    {blockedCount}
-                  </p>
+                <div className="stat-card">
+                  <div className="flex-between">
+                    <span className="stat-label">Question Papers</span>
+                    <span className="badge badge-info">Stored</span>
+                  </div>
+                  <div className="stat-number">{papersCount}</div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Published MCQ sets</p>
+                </div>
+
+                <div className="stat-card" style={{ borderColor: blockedCount > 0 ? 'rgba(239,68,68,0.2)' : 'var(--border-color)' }}>
+                  <div className="flex-between">
+                    <span className="stat-label">Pending Review</span>
+                    <span className="badge badge-danger">Urgent</span>
+                  </div>
+                  <div className="stat-number" style={{ color: blockedCount > 0 ? 'var(--color-danger)' : 'var(--text-primary)' }}>{blockedCount}</div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Students blocked pending action</p>
                 </div>
               </div>
             )}
@@ -655,32 +663,38 @@ function App() {
                   </h3>
                   
                   {liveAlerts.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', margin: 'auto' }}>
-                      Waiting for proctoring events...
-                    </p>
+                    <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🕐</div>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>Waiting for proctoring events...</p>
+                    </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '250px', overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '260px', overflowY: 'auto' }}>
                       {liveAlerts.map((alert) => (
-                        <div 
-                          key={alert.id} 
+                        <div
+                          key={alert.id}
                           style={{
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: 'flex-start',
                             gap: '0.75rem',
-                            padding: '0.65rem 0.85rem',
-                            background: 'rgba(0, 0, 0, 0.15)',
-                            borderLeft: alert.type === 'danger' || alert.type === 'malpractice' ? '3px solid #ef4444' :
-                                       alert.type === 'warning' ? '3px solid #fbbf24' :
-                                       alert.type === 'success' ? '3px solid #10b981' : '3px solid #3b82f6',
-                            borderRadius: '4px',
-                            fontSize: '0.85rem'
+                            padding: '0.7rem 0.9rem',
+                            background: alert.type === 'danger' ? 'var(--color-danger-bg)' :
+                                        alert.type === 'warning' ? 'var(--color-warning-bg)' :
+                                        alert.type === 'success' ? 'var(--color-success-bg)' : 'var(--color-info-bg)',
+                            borderLeft: `3px solid ${
+                              alert.type === 'danger' ? 'var(--color-danger)' :
+                              alert.type === 'warning' ? 'var(--color-warning)' :
+                              alert.type === 'success' ? 'var(--color-success)' : 'var(--color-info)'
+                            }`,
+                            borderRadius: '0 8px 8px 0',
+                            fontSize: '0.84rem'
                           }}
                         >
-                          <div style={{ flex: 1 }}>
-                            <strong>{alert.studentName}</strong> {alert.message}
+                          <div style={{ flex: 1, lineHeight: 1.5 }}>
+                            <strong style={{ color: 'var(--text-primary)' }}>{alert.studentName}</strong>
+                            <span style={{ color: 'var(--text-secondary)' }}> {alert.message}</span>
                           </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {parseTime(alert.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', marginTop: '2px' }}>
+                            {parseTime(alert.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       ))}
@@ -935,113 +949,135 @@ function App() {
     <div className="app-container">
       {/* Sidebar */}
       <aside className="sidebar">
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.25rem' }}>
-            DIET <span style={{ color: 'var(--primary)' }}>Proctor</span>
-          </h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            {isMock ? "🔧 Mock Mode (Offline)" : "📡 Live Mode"}
-          </p>
+        {/* Logo */}
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-icon">🛡️</div>
+          <div>
+            <div className="sidebar-logo-text">DIET Proctor</div>
+            <div className="sidebar-logo-sub">{isMock ? 'Mock Mode' : 'Live Mode'}</div>
+          </div>
         </div>
-        
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
-          <div 
-            className={`sidebar-link ${activeTab === 'overview' ? 'active' : ''}`} 
+
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
+          <p className="sidebar-section-label">Navigation</p>
+
+          <div
+            className={`sidebar-link ${activeTab === 'overview' ? 'active' : ''}`}
             onClick={() => setActiveTab('overview')}
           >
-            📊 Overview
+            <span className="sidebar-icon">📊</span> Overview
           </div>
-          
+
           {role === 'teacher' ? (
             <>
-              <div 
-                className={`sidebar-link ${activeTab === 'papers' ? 'active' : ''}`} 
+              <div
+                className={`sidebar-link ${activeTab === 'papers' ? 'active' : ''}`}
                 onClick={() => setActiveTab('papers')}
               >
-                📝 Question Papers
+                <span className="sidebar-icon">📝</span> Question Papers
               </div>
 
-              <div 
-                className={`sidebar-link ${activeTab === 'live' ? 'active' : ''}`} 
+              <div
+                className={`sidebar-link ${activeTab === 'live' ? 'active' : ''}`}
                 onClick={() => setActiveTab('live')}
               >
-                📡 Live Monitor
+                <span className="sidebar-icon">📡</span> Live Monitor
               </div>
 
-              <div 
-                className={`sidebar-link ${activeTab === 'students' ? 'active' : ''}`} 
+              <div
+                className={`sidebar-link ${activeTab === 'students' ? 'active' : ''}`}
                 onClick={() => setActiveTab('students')}
               >
-                👥 Students
+                <span className="sidebar-icon">👥</span> Students
               </div>
             </>
           ) : (
             <>
-              <div 
-                className={`sidebar-link ${activeTab === 'domains' ? 'active' : ''}`} 
+              <div
+                className={`sidebar-link ${activeTab === 'domains' ? 'active' : ''}`}
                 onClick={() => setActiveTab('domains')}
               >
-                🌐 Domain Whitelists
+                <span className="sidebar-icon">🌐</span> Domain Whitelists
               </div>
 
-              <div 
-                className={`sidebar-link ${activeTab === 'teachers' ? 'active' : ''}`} 
+              <div
+                className={`sidebar-link ${activeTab === 'teachers' ? 'active' : ''}`}
                 onClick={() => setActiveTab('teachers')}
               >
-                👥 Faculty Directory
+                <span className="sidebar-icon">👥</span> Faculty Directory
               </div>
 
-              <div 
-                className={`sidebar-link ${activeTab === 'policies' ? 'active' : ''}`} 
+              <div
+                className={`sidebar-link ${activeTab === 'policies' ? 'active' : ''}`}
                 onClick={() => setActiveTab('policies')}
               >
-                🛠️ Exam Policies
+                <span className="sidebar-icon">🛠️</span> Exam Policies
               </div>
             </>
           )}
         </nav>
 
-        {/* Development Console Switcher */}
-        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', textAlign: 'left' }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Console Switcher (Dev)
-          </p>
-          <select 
-            value={role} 
+        {/* Dev Console Switcher */}
+        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+          <p className="sidebar-section-label" style={{ marginBottom: '0.5rem' }}>Dev Console</p>
+          <select
+            value={role}
             onChange={(e) => {
               const newRole = e.target.value;
               setRole(newRole);
               setUser(prev => ({ ...prev, role: newRole, name: newRole === 'superadmin' ? 'Mock Super Admin' : 'Mock Teacher (Dev)' }));
               setActiveTab('overview');
-            }} 
+            }}
             className="input-field"
-            style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+            style={{ padding: '0.45rem 0.75rem', fontSize: '0.82rem' }}
           >
             <option value="teacher">👨‍🏫 Teacher Console</option>
             <option value="superadmin">👑 Super Admin Console</option>
           </select>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Logged in as:</p>
-          <p style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)' }}>{user.name}</p>
+        {/* User Info */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.65rem',
+          background: 'var(--primary-light)', borderRadius: '12px',
+          padding: '0.75rem', border: '1px solid rgba(79,70,229,0.1)'
+        }}>
+          <div style={{
+            width: '32px', height: '32px',
+            background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+            borderRadius: '50%', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', color: 'white', fontWeight: 700,
+            fontSize: '0.8rem', flexShrink: 0
+          }}>
+            {user.name?.charAt(0) || 'T'}
+          </div>
+          <div style={{ overflow: 'hidden' }}>
+            <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}</p>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{role === 'superadmin' ? 'Super Admin' : 'Teacher'}</p>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="main-content">
         <header className="dashboard-header">
           <div>
-            <h4 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
               {role === 'superadmin' ? 'Super Admin Console' : 'Teacher Console'}
-            </h4>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, textTransform: 'capitalize' }}>{activeTab}</h1>
+            </p>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.02em', textTransform: 'capitalize', color: 'var(--text-primary)' }}>
+              {activeTab === 'live' ? 'Live Monitor' : activeTab}
+            </h1>
           </div>
-          <div>
-            <button className="btn btn-secondary" onClick={handleLogout}>Logout</button>
-          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleLogout}
+            style={{ gap: '0.35rem' }}
+          >
+            🚪 Logout
+          </button>
         </header>
-        
+
         {renderContent()}
       </main>
     </div>

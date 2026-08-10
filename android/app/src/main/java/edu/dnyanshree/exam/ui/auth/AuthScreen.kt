@@ -1,20 +1,45 @@
 package edu.dnyanshree.exam.ui.auth
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.PhoneAuthProvider
+import edu.dnyanshree.exam.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,6 +52,9 @@ import java.net.URL
 // Backend base URL (127.0.0.1 maps to localhost)
 private const val BACKEND_URL = "http://127.0.0.1:5000"
 
+private val PrimaryGradient = Brush.linearGradient(listOf(Indigo500, Violet500))
+private val BackgroundGradient = Brush.verticalGradient(listOf(SurfaceLight, Color(0xFFF0F0FF)))
+
 @Composable
 fun AuthScreen(onAuthSuccess: () -> Unit) {
     var isLogin by remember { mutableStateOf(true) }
@@ -36,10 +64,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var phone by remember { mutableStateOf("") }
     var course by remember { mutableStateOf("") }
     var semester by remember { mutableStateOf("") }
-    
+
     var errorMsg by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
-    
+
     // OTP Dialog state
     var showOtpDialog by remember { mutableStateOf(false) }
     var otpCode by remember { mutableStateOf("") }
@@ -47,176 +75,313 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var pendingUserToken by remember { mutableStateOf("") }
 
     val coroutineScope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .background(BackgroundGradient),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.Center
         ) {
+            // === App Branding ===
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .shadow(elevation = 12.dp, shape = RoundedCornerShape(20.dp), ambientColor = Indigo500.copy(alpha = 0.3f))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(PrimaryGradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Secure Exam",
+                    tint = White,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(
-                text = if (isLogin) "Student Login" else "Student Register",
+                text = "SecureExam",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = Gray900,
+                letterSpacing = (-0.5).sp
+            )
+            Text(
+                text = "Dnyanshree Institute of Technology",
+                fontSize = 13.sp,
+                color = Gray400,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp)
             )
 
-            if (errorMsg.isNotEmpty()) {
-                Text(
-                    text = errorMsg,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
-                )
-            }
+            Spacer(modifier = Modifier.height(28.dp))
 
-            if (!isLogin) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Full Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = course,
-                    onValueChange = { course = it },
-                    label = { Text("Course (e.g. B.Tech CSE)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = semester,
-                    onValueChange = { semester = it },
-                    label = { Text("Semester (e.g. Sem 5)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            // === Main Card ===
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = 20.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        ambientColor = Color(0x1A000000)
+                    ),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
 
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("College Email (@dnyanshree.edu.in)") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
-            )
-
-            if (!isLogin) {
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Mobile Number") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                )
-            }
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-            )
-
-            Button(
-                onClick = {
-                    if (isLogin) {
-                        handleLogin(
-                            email, password, coroutineScope, 
-                            onSuccess = onAuthSuccess,
-                            onError = { errorMsg = it },
-                            onLoading = { loading = it }
-                        )
-                    } else {
-                        handleRegisterStart(
-                            name, email, phone, password, course, semester, coroutineScope,
-                            onShowOtp = { verId, token ->
-                                verificationId = verId
-                                pendingUserToken = token
-                                showOtpDialog = true
-                            },
-                            onError = { errorMsg = it },
-                            onLoading = { loading = it }
-                        )
+                    // === Tab Toggle ===
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Gray100)
+                            .padding(4.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            listOf(true to "Sign In", false to "Register").forEach { (tabIsLogin, label) ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(if (isLogin == tabIsLogin) White else Color.Transparent)
+                                        .clickable { isLogin = tabIsLogin; errorMsg = "" }
+                                        .padding(vertical = 10.dp)
+                                        .then(
+                                            if (isLogin == tabIsLogin)
+                                                Modifier.shadow(2.dp, RoundedCornerShape(9.dp))
+                                            else Modifier
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isLogin == tabIsLogin) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isLogin == tabIsLogin) Indigo500 else Gray400,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !loading
-            ) {
-                Text(if (loading) "Processing..." else if (isLogin) "Log In" else "Sign Up")
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // === Error Message ===
+                    AnimatedVisibility(
+                        visible = errorMsg.isNotEmpty(),
+                        enter = fadeIn() + slideInVertically(),
+                        exit = fadeOut()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Danger100)
+                                .border(1.dp, Danger500.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = errorMsg,
+                                color = Danger800,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 18.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    // === Register Fields ===
+                    AnimatedVisibility(visible = !isLogin) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            StyledTextField(
+                                value = name,
+                                onValueChange = { name = it },
+                                label = "Full Name",
+                                icon = Icons.Default.Person,
+                                keyboardType = KeyboardType.Text
+                            )
+                            StyledTextField(
+                                value = course,
+                                onValueChange = { course = it },
+                                label = "Course (e.g. B.Tech CSE)",
+                                icon = Icons.Default.School,
+                                keyboardType = KeyboardType.Text
+                            )
+                            StyledTextField(
+                                value = semester,
+                                onValueChange = { semester = it },
+                                label = "Semester (e.g. Sem 5)",
+                                icon = Icons.Default.School,
+                                keyboardType = KeyboardType.Text
+                            )
+                            StyledTextField(
+                                value = phone,
+                                onValueChange = { phone = it },
+                                label = "Mobile Number",
+                                icon = Icons.Default.Phone,
+                                keyboardType = KeyboardType.Phone
+                            )
+                        }
+                    }
+
+                    if (!isLogin) Spacer(modifier = Modifier.height(12.dp))
+
+                    // === Common Fields ===
+                    StyledTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = "College Email",
+                        placeholder = "@dnyanshree.edu.in",
+                        icon = Icons.Default.Email,
+                        keyboardType = KeyboardType.Email
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    StyledTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = "Password",
+                        icon = Icons.Default.Lock,
+                        keyboardType = KeyboardType.Password,
+                        isPassword = true
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // === Primary Action Button ===
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (!loading) PrimaryGradient else Brush.linearGradient(listOf(Gray300, Gray300)))
+                            .clickable(enabled = !loading) {
+                                if (isLogin) {
+                                    handleLogin(email, password, coroutineScope,
+                                        onSuccess = onAuthSuccess,
+                                        onError = { errorMsg = it },
+                                        onLoading = { loading = it })
+                                } else {
+                                    handleRegisterStart(name, email, phone, password, course, semester, coroutineScope,
+                                        onShowOtp = { verId, token ->
+                                            verificationId = verId
+                                            pendingUserToken = token
+                                            showOtpDialog = true
+                                        },
+                                        onError = { errorMsg = it },
+                                        onLoading = { loading = it })
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (loading) {
+                            CircularProgressIndicator(color = White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text(
+                                text = if (isLogin) "Sign In" else "Create Account",
+                                color = White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
+                }
             }
 
-            TextButton(
-                onClick = {
-                    isLogin = !isLogin
-                    errorMsg = ""
-                }
-            ) {
-                Text(if (isLogin) "Create an account" else "Already have an account? Log In")
-            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === Footer note ===
+            Text(
+                text = "Use your college-issued email address to access the exam portal.",
+                fontSize = 12.sp,
+                color = Gray400,
+                textAlign = TextAlign.Center,
+                lineHeight = 18.sp
+            )
         }
     }
 
-    // OTP Code Dialog
+    // === OTP Dialog ===
     if (showOtpDialog) {
         Dialog(onDismissRequest = { }) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                tonalElevation = 8.dp
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = White),
+                elevation = CardDefaults.cardElevation(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Indigo50),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Phone, contentDescription = null, tint = Indigo500, modifier = Modifier.size(24.dp))
+                    }
+
+                    Text("Verify Your Number", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
                     Text(
-                        text = "Verify Phone OTP",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "Enter the 6-digit code sent to your mobile",
+                        fontSize = 13.sp,
+                        color = Gray400,
+                        textAlign = TextAlign.Center
                     )
-                    Text(
-                        text = "Enter the 6-digit code sent to $phone",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    OutlinedTextField(
+
+                    StyledTextField(
                         value = otpCode,
                         onValueChange = { if (it.length <= 6) otpCode = it },
-                        label = { Text("6-Digit OTP") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
+                        label = "6-Digit OTP",
+                        keyboardType = KeyboardType.Number
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        TextButton(onClick = { showOtpDialog = false }) {
-                            Text("Cancel")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                handleOtpVerification(
-                                    otpCode, verificationId, pendingUserToken, name, phone, course, semester, coroutineScope,
-                                    onSuccess = {
-                                        showOtpDialog = false
-                                        onAuthSuccess()
-                                    },
-                                    onError = { errorMsg = it },
-                                    onLoading = { loading = it }
-                                )
-                            },
-                            enabled = otpCode.length == 6 && !loading
+                        OutlinedButton(
+                            onClick = { showOtpDialog = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = ButtonDefaults.outlinedButtonBorder
                         ) {
-                            Text("Verify")
+                            Text("Cancel", color = Gray500)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (otpCode.length == 6 && !loading) PrimaryGradient else Brush.linearGradient(listOf(Gray300, Gray300)))
+                                .clickable(enabled = otpCode.length == 6 && !loading) {
+                                    handleOtpVerification(
+                                        otpCode, verificationId, pendingUserToken, name, phone, course, semester, coroutineScope,
+                                        onSuccess = { showOtpDialog = false; onAuthSuccess() },
+                                        onError = { errorMsg = it },
+                                        onLoading = { loading = it }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Verify", color = White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         }
                     }
                 }
@@ -224,6 +389,46 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun StyledTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    icon: ImageVector? = null,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    isPassword: Boolean = false
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, fontSize = 13.sp) },
+        placeholder = if (placeholder.isNotEmpty()) ({ Text(placeholder, color = Gray400, fontSize = 13.sp) }) else null,
+        leadingIcon = if (icon != null) ({
+            Icon(imageVector = icon, contentDescription = null, tint = Gray400, modifier = Modifier.size(18.dp))
+        }) else null,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Indigo500,
+            unfocusedBorderColor = Gray200,
+            focusedLabelColor = Indigo500,
+            unfocusedLabelColor = Gray400,
+            cursorColor = Indigo500,
+            focusedContainerColor = White,
+            unfocusedContainerColor = Gray50,
+        )
+    )
+}
+
+// ===================================================================
+// Private Business Logic Functions (unchanged from original)
+// ===================================================================
 
 // Check if Firebase is running with mock coordinates/placeholder configs
 private fun checkIsFirebaseMock(): Boolean {
@@ -260,7 +465,7 @@ private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: S
     val responseCode = conn.responseCode
     val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
     val responseText = stream.bufferedReader().use { it.readText() }
-    
+
     if (responseCode !in 200..299) {
         val errorJson = try { JSONObject(responseText) } catch(e: Exception) { null }
         val errorMsg = errorJson?.optString("error") ?: "Server returned error code $responseCode"
@@ -291,7 +496,7 @@ private fun handleLogin(
                     put("phoneNumber", "1234567890")
                 }.toString()
                 makeApiRequest("/register-check", "POST", requestBody)
-                
+
                 onLoading(false)
                 onSuccess()
             } catch (e: Exception) {
@@ -308,7 +513,7 @@ private fun handleLogin(
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         val user = task.result?.user
-                        
+
                         // Check if email is verified in live mode
                         if (user != null && !user.isEmailVerified) {
                             onLoading(false)
@@ -316,7 +521,7 @@ private fun handleLogin(
                             firebaseAuth.signOut()
                             return@addOnCompleteListener
                         }
-                        
+
                         user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
                             if (tokenTask.isSuccessful) {
                                 val token = tokenTask.result?.token ?: ""
@@ -391,10 +596,10 @@ private fun handleRegisterStart(
                     .addOnCompleteListener { task ->
                         if (task.isSuccessful) {
                             val user = task.result?.user
-                            
+
                             // Send verification email link natively
                             user?.sendEmailVerification()
-                            
+
                             user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
                                 if (tokenTask.isSuccessful) {
                                     val token = tokenTask.result?.token ?: ""
@@ -434,7 +639,7 @@ private fun handleOtpVerification(
                     put("course", course)
                     put("semester", semester)
                 }.toString()
-                
+
                 // Submit profile creation to Backend using mock token
                 makeApiRequest("/create-profile", "POST", profileBody, "mock-student")
                 onLoading(false)
@@ -457,7 +662,7 @@ private fun handleOtpVerification(
                                             put("course", course)
                                             put("semester", semester)
                                         }.toString()
-                                        
+
                                         makeApiRequest("/create-profile", "POST", profileBody, token)
                                         onLoading(false)
                                         onSuccess()
