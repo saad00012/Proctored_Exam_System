@@ -1,6 +1,42 @@
-# Ignore root level config
-.env
+# === Node / npm ===
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Mac OS
+# === Environment & Secrets ===
+.env
+.env.local
+.env.production
+*.env
+
+# === Firebase / Google Credentials ===
+google-services.json
+GoogleService-Info.plist
+service-account.json
+firebase-adminsdk*.json
+
+# === Android Build Outputs ===
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# === macOS / Windows ===
 .DS_Store
+Thumbs.db
+
+# === IDEs ===
+.idea/
+*.iml
+.vscode/
+*.suo
+*.user
+
+# === Misc ===
+backend.zip
+pdf_gen2/
