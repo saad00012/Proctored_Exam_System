@@ -26,9 +26,9 @@ function StudentDirectory() {
   ];
 
   const mockPapers = [
-    { id: 'paper-1', title: 'Midterm Circuit Analysis', subject: 'Electrical Engineering' },
-    { id: 'paper-2', title: 'Data Structures Quiz 1', subject: 'Computer Science' },
-    { id: 'paper-3', title: 'Introduction to Java', subject: 'Computer Science' }
+    { id: 'paper-1', title: 'Midterm Circuit Analysis', department: 'Electrical Engineering' },
+    { id: 'paper-2', title: 'Data Structures Quiz 1', department: 'Computer Science' },
+    { id: 'paper-3', title: 'Introduction to Java', department: 'Computer Science' }
   ];
 
   const mockQuestions = [
@@ -117,9 +117,9 @@ function StudentDirectory() {
     return p ? p.title : 'Unknown Exam';
   };
 
-  const getPaperSubject = (paperId) => {
+  const getPaperDepartment = (paperId) => {
     const p = papers.find(paper => paper.id === paperId);
-    return p ? p.subject : '';
+    return p ? p.department : '';
   };
 
   // Grade helper
@@ -350,7 +350,7 @@ function StudentDirectory() {
                             </div>
                             
                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                              Subject: {getPaperSubject(attempt.paperId)}
+                              Department: {getPaperDepartment(attempt.paperId)}
                             </p>
                             
                             <div className="flex-between" style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed var(--border-color)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>

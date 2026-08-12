@@ -22,11 +22,11 @@ function PaperUpload() {
   const [questions, setQuestions] = useState([]);
   const [showCreatePaper, setShowCreatePaper] = useState(false);
   const [paperTitle, setPaperTitle] = useState('');
-  const [paperSubject, setPaperSubject] = useState('');
+  const [paperDepartment, setPaperDepartment] = useState('');
   const [loading, setLoading] = useState(false);
   const [showEditPaperInfo, setShowEditPaperInfo] = useState(false);
   const [editPaperTitle, setEditPaperTitle] = useState('');
-  const [editPaperSubject, setEditPaperSubject] = useState('');
+  const [editPaperDepartment, setEditPaperDepartment] = useState('');
   const [paperDuration, setPaperDuration] = useState('');
   const [paperScheduleStart, setPaperScheduleStart] = useState('');
   const [paperScheduleEnd, setPaperScheduleEnd] = useState('');
@@ -48,7 +48,7 @@ function PaperUpload() {
         { text: 'I = V * R', imageUrl: null }
       ],
       correctOptionIndex: 0,
-      subject: 'Electrical Engineering'
+      department: 'Electrical Engineering'
     }
   ]);
 
@@ -71,8 +71,8 @@ function PaperUpload() {
   useEffect(() => {
     if (isMock || !db) {
       setPapers([
-        { id: 'paper-1', title: 'Midterm Circuit Analysis', subject: 'Electrical Engineering', status: 'published', createdAt: new Date().toISOString() },
-        { id: 'paper-2', title: 'Data Structures Quiz 1', subject: 'Computer Science', status: 'draft', createdAt: new Date().toISOString() }
+        { id: 'paper-1', title: 'Midterm Circuit Analysis', department: 'Electrical Engineering', status: 'published', createdAt: new Date().toISOString() },
+        { id: 'paper-2', title: 'Data Structures Quiz 1', department: 'Computer Science', status: 'draft', createdAt: new Date().toISOString() }
       ]);
       return;
     }
@@ -121,7 +121,7 @@ function PaperUpload() {
   useEffect(() => {
     if (selectedPaper) {
       setEditPaperTitle(selectedPaper.title);
-      setEditPaperSubject(selectedPaper.subject);
+      setEditPaperDepartment(selectedPaper.department);
       setEditPaperDuration(selectedPaper.durationMinutes || '');
       setEditPaperScheduleStart(selectedPaper.scheduleStart || '');
       setEditPaperScheduleEnd(selectedPaper.scheduleEnd || '');
@@ -132,12 +132,12 @@ function PaperUpload() {
 
   const handleCreatePaperSubmit = async (e) => {
     e.preventDefault();
-    if (!paperTitle || !paperSubject) return;
+    if (!paperTitle || !paperDepartment) return;
 
     setLoading(true);
     const paperData = {
       title: paperTitle,
-      subject: paperSubject,
+      department: paperDepartment,
       status: 'draft',
       createdAt: new Date().toISOString(),
       ...(paperDuration && { durationMinutes: parseInt(paperDuration) }),
@@ -149,7 +149,7 @@ function PaperUpload() {
       const newMockPaper = { id: 'paper-' + Date.now(), ...paperData };
       setPapers([newMockPaper, ...papers]);
       setPaperTitle('');
-      setPaperSubject('');
+      setPaperDepartment('');
       setPaperDuration('');
       setPaperScheduleStart('');
       setPaperScheduleEnd('');
@@ -159,7 +159,7 @@ function PaperUpload() {
       try {
         await addDoc(collection(db, 'papers'), paperData);
         setPaperTitle('');
-        setPaperSubject('');
+        setPaperDepartment('');
         setPaperDuration('');
         setPaperScheduleStart('');
         setPaperScheduleEnd('');
@@ -253,11 +253,11 @@ function PaperUpload() {
 
   const handleUpdatePaperInfo = async (e) => {
     e.preventDefault();
-    if (!editPaperTitle || !editPaperSubject) return;
+    if (!editPaperTitle || !editPaperDepartment) return;
 
     setLoading(true);
     if (isMock) {
-      const updated = { ...selectedPaper, title: editPaperTitle, subject: editPaperSubject, durationMinutes: editPaperDuration ? parseInt(editPaperDuration) : null, scheduleStart: editPaperScheduleStart || null, scheduleEnd: editPaperScheduleEnd || null };
+      const updated = { ...selectedPaper, title: editPaperTitle, department: editPaperDepartment, durationMinutes: editPaperDuration ? parseInt(editPaperDuration) : null, scheduleStart: editPaperScheduleStart || null, scheduleEnd: editPaperScheduleEnd || null };
       setPapers(papers.map(p => p.id === selectedPaper.id ? updated : p));
       setSelectedPaper(updated);
       setShowEditPaperInfo(false);
@@ -266,12 +266,12 @@ function PaperUpload() {
       try {
         await updateDoc(doc(db, 'papers', selectedPaper.id), {
           title: editPaperTitle,
-          subject: editPaperSubject,
+          department: editPaperDepartment,
           ...(editPaperDuration ? { durationMinutes: parseInt(editPaperDuration) } : { durationMinutes: null }),
           ...(editPaperScheduleStart ? { scheduleStart: editPaperScheduleStart } : { scheduleStart: null }),
           ...(editPaperScheduleEnd ? { scheduleEnd: editPaperScheduleEnd } : { scheduleEnd: null })
         });
-        setSelectedPaper({ ...selectedPaper, title: editPaperTitle, subject: editPaperSubject, durationMinutes: editPaperDuration ? parseInt(editPaperDuration) : null, scheduleStart: editPaperScheduleStart || null, scheduleEnd: editPaperScheduleEnd || null });
+        setSelectedPaper({ ...selectedPaper, title: editPaperTitle, department: editPaperDepartment, durationMinutes: editPaperDuration ? parseInt(editPaperDuration) : null, scheduleStart: editPaperScheduleStart || null, scheduleEnd: editPaperScheduleEnd || null });
         setShowEditPaperInfo(false);
       } catch (err) {
         console.error("Failed to update paper info:", err);
@@ -385,7 +385,7 @@ function PaperUpload() {
           questionImageUrl,
           options: optionsData,
           correctOptionIndex: correctOption,
-          subject: selectedPaper.subject
+          department: selectedPaper.department
         };
 
         setMockQuestions([...mockQuestions, newMockQ]);
@@ -412,7 +412,7 @@ function PaperUpload() {
           questionImageUrl,
           options: optionsData,
           correctOptionIndex: correctOption,
-          subject: selectedPaper.subject
+          department: selectedPaper.department
         };
 
         await addDoc(collection(db, 'questions'), questionData);
@@ -478,9 +478,9 @@ function PaperUpload() {
                 <input
                   type="text"
                   className="input-field"
-                  placeholder="Subject (e.g. Basic Electronics)"
-                  value={paperSubject}
-                  onChange={(e) => setPaperSubject(e.target.value)}
+                  placeholder="Department (e.g. Basic Electronics)"
+                  value={paperDepartment}
+                  onChange={(e) => setPaperDepartment(e.target.value)}
                   style={{ flex: 1, minWidth: '200px' }}
                   required
                   disabled={loading}
@@ -538,7 +538,7 @@ function PaperUpload() {
                 <div>
                   <h4 style={{ fontSize: '1.15rem', marginBottom: '0.25rem' }}>{paper.title}</h4>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                    Subject: <strong>{paper.subject}</strong> | Created: {formatCreatedDate(paper.createdAt)}
+                    Department: <strong>{paper.department}</strong> | Created: {formatCreatedDate(paper.createdAt)}
                   </p>
                 </div>
                 <div className="flex-row" style={{ gap: '0.75rem' }}>
@@ -598,12 +598,12 @@ function PaperUpload() {
                 />
               </div>
               <div style={{ flex: 1, minWidth: '150px' }}>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>Subject</label>
+                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>Department</label>
                 <input
                   type="text"
                   className="input-field"
-                  value={editPaperSubject}
-                  onChange={(e) => setEditPaperSubject(e.target.value)}
+                  value={editPaperDepartment}
+                  onChange={(e) => setEditPaperDepartment(e.target.value)}
                   required
                 />
               </div>
@@ -650,7 +650,7 @@ function PaperUpload() {
               <div>
                 <h2 className="gradient-text" style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{selectedPaper.title}</h2>
                 <p style={{ color: 'var(--text-secondary)' }}>
-                  Subject: <strong style={{ color: 'white' }}>{selectedPaper.subject}</strong> | Total Questions: <strong style={{ color: 'white' }}>{questions.length}</strong>
+                  Department: <strong style={{ color: 'white' }}>{selectedPaper.department}</strong> | Total Questions: <strong style={{ color: 'white' }}>{questions.length}</strong>
                   {selectedPaper.durationMinutes && <> | Duration: <strong style={{ color: 'white' }}>{selectedPaper.durationMinutes} mins</strong></>}
                 </p>
                 {(selectedPaper.scheduleStart || selectedPaper.scheduleEnd) && (

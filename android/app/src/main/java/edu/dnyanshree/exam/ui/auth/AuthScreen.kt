@@ -62,7 +62,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var course by remember { mutableStateOf("") }
+    var department by remember { mutableStateOf("") }
     var semester by remember { mutableStateOf("") }
 
     var errorMsg by remember { mutableStateOf("") }
@@ -215,9 +215,9 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 keyboardType = KeyboardType.Text
                             )
                             StyledTextField(
-                                value = course,
-                                onValueChange = { course = it },
-                                label = "Course (e.g. B.Tech CSE)",
+                                value = department,
+                                onValueChange = { department = it },
+                                label = "Department (e.g. Computer Science)",
                                 icon = Icons.Default.School,
                                 keyboardType = KeyboardType.Text
                             )
@@ -275,7 +275,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                         onError = { errorMsg = it },
                                         onLoading = { loading = it })
                                 } else {
-                                    handleRegisterStart(name, email, phone, password, course, semester, coroutineScope,
+                                    handleRegisterStart(name, email, phone, password, department, semester, coroutineScope,
                                         onShowOtp = { verId, token ->
                                             verificationId = verId
                                             pendingUserToken = token
@@ -373,7 +373,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 .background(if (otpCode.length == 6 && !loading) PrimaryGradient else Brush.linearGradient(listOf(Gray300, Gray300)))
                                 .clickable(enabled = otpCode.length == 6 && !loading) {
                                     handleOtpVerification(
-                                        otpCode, verificationId, pendingUserToken, name, phone, course, semester, coroutineScope,
+                                        otpCode, verificationId, pendingUserToken, name, phone, department, semester, coroutineScope,
                                         onSuccess = { showOtpDialog = false; onAuthSuccess() },
                                         onError = { errorMsg = it },
                                         onLoading = { loading = it }
@@ -558,11 +558,11 @@ private fun handleLogin(
 }
 
 private fun handleRegisterStart(
-    name: String, email: String, phone: String, password: String, course: String, semester: String, scope: CoroutineScope,
+    name: String, email: String, phone: String, password: String, department: String, semester: String, scope: CoroutineScope,
     onShowOtp: (String, String) -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit
 ) {
-    if (name.isEmpty() || email.isEmpty() || phone.isEmpty() || password.isEmpty() || course.isEmpty() || semester.isEmpty()) {
-        onError("All registration fields (including Course & Semester) are required.")
+    if (name.isEmpty() || email.isEmpty() || phone.isEmpty() || password.isEmpty() || department.isEmpty() || semester.isEmpty()) {
+        onError("All registration fields (including Department & Semester) are required.")
         return
     }
 
@@ -624,7 +624,7 @@ private fun handleRegisterStart(
 }
 
 private fun handleOtpVerification(
-    otpCode: String, verificationId: String, token: String, name: String, phone: String, course: String, semester: String, scope: CoroutineScope,
+    otpCode: String, verificationId: String, token: String, name: String, phone: String, department: String, semester: String, scope: CoroutineScope,
     onSuccess: () -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit
 ) {
     onLoading(true)
@@ -636,7 +636,7 @@ private fun handleOtpVerification(
                     put("name", name)
                     put("phoneNumber", phone)
                     put("role", "student")
-                    put("course", course)
+                    put("department", department)
                     put("semester", semester)
                 }.toString()
 
@@ -659,7 +659,7 @@ private fun handleOtpVerification(
                                             put("name", name)
                                             put("phoneNumber", phone)
                                             put("role", "student")
-                                            put("course", course)
+                                            put("department", department)
                                             put("semester", semester)
                                         }.toString()
 

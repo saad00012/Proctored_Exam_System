@@ -22,7 +22,19 @@ let admin = null;
 let db = null;
 const serviceAccountPath = path.resolve(__dirname, '..', process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'service-account.json');
 
-if (fs.existsSync(serviceAccountPath)) {
+if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+  try {
+    admin = require('firebase-admin');
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    db = admin.firestore();
+    console.log('✅ Firebase Admin SDK initialized successfully via JSON environment variable.');
+  } catch (error) {
+    console.error('❌ Failed to initialize Firebase Admin SDK from env var:', error.message);
+  }
+} else if (fs.existsSync(serviceAccountPath)) {
   try {
     admin = require('firebase-admin');
     const serviceAccount = require(serviceAccountPath);
@@ -30,9 +42,20 @@ if (fs.existsSync(serviceAccountPath)) {
       credential: admin.credential.cert(serviceAccount)
     });
     db = admin.firestore();
-    console.log('✅ Firebase Admin SDK initialized successfully with service account.');
+    console.log('✅ Firebase Admin SDK initialized successfully with service account JSON.');
   } catch (error) {
     console.error('❌ Failed to initialize Firebase Admin SDK:', error.message);
+  }
+} else if (process.env.NODE_ENV === 'production') {
+  try {
+    admin = require('firebase-admin');
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault()
+    });
+    db = admin.firestore();
+    console.log('✅ Firebase Admin SDK initialized using Google Cloud Application Default Credentials.');
+  } catch (error) {
+    console.error('❌ Failed to initialize Firebase Admin SDK with Application Default Credentials:', error.message);
   }
 } else {
   console.warn(`⚠️ Warning: Service account file not found at ${serviceAccountPath}. Running in Mock mode.`);
@@ -50,20 +73,20 @@ const verifyToken = async (req, res, next) => {
   // 1. Check for explicit mock headers first to facilitate offline development
   if (token.startsWith('mock-')) {
     console.log(`⚠️ Mocking token verification for token: ${token}`);
+    // Mock Admin
+    if (token === 'mock-superadmin') {
+      req.user = { uid: 'mock-uid-superadmin-001', email: 'admin@dnyanshree.edu.in', role: 'superadmin', name: 'Mock Superadmin', department: 'All' };
+      return next();
+    }
+    // Mock Teacher
     if (token === 'mock-teacher') {
-      req.user = {
-        uid: 'mock-uid-teacher-456',
-        email: 'teacher@dnyanshree.edu.in',
-        role: 'teacher',
-        name: 'Mock Teacher'
-      };
-    } else {
-      req.user = {
-        uid: 'mock-uid-student-123',
-        email: 'student@dnyanshree.edu.in',
-        role: 'student',
-        name: 'Mock Student'
-      };
+      req.user = { uid: 'mock-uid-teacher-456', email: 'teacher@dnyanshree.edu.in', role: 'teacher', name: 'Mock Teacher (Dev)', department: 'Computer Science' };
+      return next();
+    }
+    // Mock Student
+    if (token === 'mock-student') {
+      req.user = { uid: 'mock-uid-student-123', email: 'student@dnyanshree.edu.in', role: 'student', name: 'Mock Student (Dev)', department: 'Computer Science' };
+      return next();
     }
     return next();
   }
@@ -76,7 +99,8 @@ const verifyToken = async (req, res, next) => {
       uid: 'mock-uid-student-123',
       email: 'student@dnyanshree.edu.in',
       role: 'student',
-      name: 'Mock Student'
+      name: 'Mock Student',
+      department: 'Computer Science'
     };
     return next();
   }
@@ -104,8 +128,10 @@ const verifyToken = async (req, res, next) => {
     if (userDoc.exists) {
       req.user.role = userDoc.data().role;
       req.user.name = userDoc.data().name;
+      req.user.department = userDoc.data().department || 'Unassigned';
     } else {
       req.user.role = 'student'; // default role
+      req.user.department = 'Unassigned';
     }
 
     next();
@@ -159,7 +185,7 @@ app.post('/register-check', async (req, res) => {
 
 // 3. Create/Update Profile (called after registration in Firebase Auth)
 app.post('/create-profile', verifyToken, async (req, res) => {
-  const { name, phoneNumber, role, course, semester } = req.body;
+  const { name, phoneNumber, role, department, semester } = req.body;
   if (!name || !phoneNumber || !role) {
     return res.status(400).json({ error: 'Name, phone number, and role are required.' });
   }
@@ -175,7 +201,7 @@ app.post('/create-profile', verifyToken, async (req, res) => {
     phoneNumber,
     role: role === 'teacher' ? 'teacher' : 'student',
     collegeDomain: domain,
-    course: course || 'N/A',
+    department: department || 'Unassigned',
     semester: semester || 'N/A',
     createdAt: new Date().toISOString()
   };
@@ -207,13 +233,13 @@ const mockExamAttempts = new Map();
 const mockConfig = { defaultDuration: 45, warningThreshold: 3 };
 const mockViolations = [];
 const mockPapers = new Map([
-  ['paper-1', { id: 'paper-1', title: 'Midterm Circuit Analysis', subject: 'Electrical Engineering', status: 'published' }],
-  ['paper-2', { id: 'paper-2', title: 'Data Structures Quiz 1', subject: 'Computer Science', status: 'published' }],
-  ['paper-3', { id: 'paper-3', title: 'Data Structures Quiz 2', subject: 'Computer Science', status: 'published' }],
-  ['cse-set-a', { id: 'cse-set-a', title: 'CSE Set A: Intro to Programming', subject: 'Computer Science', status: 'published' }],
-  ['cse-set-b', { id: 'cse-set-b', title: 'CSE Set B: OOP Concepts', subject: 'Computer Science', status: 'published' }],
-  ['cse-set-c', { id: 'cse-set-c', title: 'CSE Set C: Data Structures', subject: 'Computer Science', status: 'published' }],
-  ['ee-set-a', { id: 'ee-set-a', title: "EE Set A: Ohm's Law Basics", subject: 'Electrical Engineering', status: 'published' }]
+  ['paper-1', { id: 'paper-1', title: 'Midterm Circuit Analysis', department: 'Electrical Engineering', status: 'published' }],
+  ['paper-2', { id: 'paper-2', title: 'Data Structures Quiz 1', department: 'Computer Science', status: 'published' }],
+  ['paper-3', { id: 'paper-3', title: 'Data Structures Quiz 2', department: 'Computer Science', status: 'published' }],
+  ['cse-set-a', { id: 'cse-set-a', title: 'CSE Set A: Intro to Programming', department: 'Computer Science', status: 'published' }],
+  ['cse-set-b', { id: 'cse-set-b', title: 'CSE Set B: OOP Concepts', department: 'Computer Science', status: 'published' }],
+  ['cse-set-c', { id: 'cse-set-c', title: 'CSE Set C: Data Structures', department: 'Computer Science', status: 'published' }],
+  ['ee-set-a', { id: 'ee-set-a', title: "EE Set A: Ohm's Law Basics", department: 'Electrical Engineering', status: 'published' }]
 ]);
 
 const mockQuestions = [
@@ -321,7 +347,7 @@ app.post('/start-exam', verifyToken, async (req, res) => {
   const studentName = req.user.name || 'Student';
 
   try {
-    let paperSubject = '';
+    let paperDepartment = '';
     let paperTitle = '';
 
     // 1. Fetch Paper details
@@ -338,8 +364,15 @@ app.post('/start-exam', verifyToken, async (req, res) => {
         return res.status(404).json({ error: 'Exam paper not found (mock).' });
       }
     }
-    paperSubject = paperObj.subject;
+    paperDepartment = paperObj.department;
     paperTitle = paperObj.title;
+
+    // Security Check: Ensure student matches paper department
+    if (req.user.role === 'student' && req.user.department !== 'All') {
+      if (paperDepartment !== req.user.department) {
+        return res.status(403).json({ error: 'Forbidden: This exam belongs to a different department.' });
+      }
+    }
 
     // 2. Load Warning Threshold and Duration (F1: check per-paper duration first)
     let defaultDurationSeconds = paperObj.durationMinutes ? (parseInt(paperObj.durationMinutes) * 60) : null;
@@ -383,28 +416,28 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     }
 
     // A2 Optimization: Batch pre-fetch all paper subjects for prior attempts to eliminate N+1 Firestore queries
-    const paperSubjectMap = {};
+    const paperDepartmentMap = {};
     if (db && priorAttempts.length > 0) {
       const uniquePaperIds = [...new Set(priorAttempts.map(a => a.paperId))];
       const paperDocs = await Promise.all(
         uniquePaperIds.map(id => db.collection('papers').doc(id).get())
       );
       paperDocs.forEach(doc => {
-        if (doc.exists) paperSubjectMap[doc.id] = doc.data().subject;
+        if (doc.exists) paperDepartmentMap[doc.id] = doc.data().department;
       });
     } else {
       priorAttempts.forEach(att => {
-        paperSubjectMap[att.paperId] = mockPapers.get(att.paperId)?.subject || '';
+        paperDepartmentMap[att.paperId] = mockPapers.get(att.paperId)?.department || '';
       });
     }
 
-    const getSubjectForPaper = (pId) => paperSubjectMap[pId] || '';
+    const getSubjectForPaper = (pId) => paperDepartmentMap[pId] || '';
 
     // Check if user is currently blocked (failed malpractice or blocked pending review in this subject)
     for (const att of priorAttempts) {
       if (att.status === 'blocked_pending_review' || att.status === 'malpractice_failed') {
-        const attSubject = getSubjectForPaper(att.paperId);
-        if (attSubject === paperSubject) {
+        const attDepartment = getSubjectForPaper(att.paperId);
+        if (attDepartment === paperDepartment) {
           isBlocked = true;
           break;
         }
@@ -419,8 +452,8 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     let hasSameSubjectSoftViolation = false;
     for (const att of priorAttempts) {
       if (att.status === 'exited_on_violation') {
-        const attSubject = getSubjectForPaper(att.paperId);
-        if (attSubject === paperSubject) {
+        const attDepartment = getSubjectForPaper(att.paperId);
+        if (attDepartment === paperDepartment) {
           hasSameSubjectSoftViolation = true;
           break;
         }
@@ -431,7 +464,7 @@ app.post('/start-exam', verifyToken, async (req, res) => {
       let candidatePapers = [];
       if (db) {
         const papersSnapshot = await db.collection('papers')
-          .where('subject', '==', paperSubject)
+          .where('subject', '==', paperDepartment)
           .where('status', '==', 'published')
           .get();
         papersSnapshot.forEach(doc => {
@@ -439,7 +472,7 @@ app.post('/start-exam', verifyToken, async (req, res) => {
         });
       } else {
         mockPapers.forEach((val, key) => {
-          if (val.subject === paperSubject && val.status === 'published') {
+          if (val.department === paperDepartment && val.status === 'published') {
             candidatePapers.push({ id: key, ...val });
           }
         });
@@ -462,17 +495,17 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     // 4. Calculate total elapsed time across prior attempts in this subject
     let totalPriorElapsed = 0;
     let customOverrideSeconds = 0;
-    let subjectWarningsCount = 0;
+    let departmentWarningsCount = 0;
 
     for (const att of priorAttempts) {
-      const attSubject = getSubjectForPaper(att.paperId);
+      const attDepartment = getSubjectForPaper(att.paperId);
 
-      if (attSubject === paperSubject) {
-        subjectWarningsCount += att.warnings || 0;
+      if (attDepartment === paperDepartment) {
+        departmentWarningsCount += att.warnings || 0;
       }
 
       if (att.paperId !== paperId) {
-        if (attSubject === paperSubject) {
+        if (attDepartment === paperDepartment) {
           totalPriorElapsed += att.elapsedTime || 0;
           // C3 fix: If this is a violated attempt with remaining override time, carry it forward
           if (att.status === 'exited_on_violation' && att.overrideTimeSeconds > 0) {
@@ -531,11 +564,11 @@ app.post('/start-exam', verifyToken, async (req, res) => {
       let terminatedCount = 0;
       for (const att of priorAttempts) {
         if (att.paperId !== paperId) {
-          let attSubject = '';
+          let attDepartment = '';
           const pDoc = await db.collection('papers').doc(att.paperId).get();
-          if (pDoc.exists) attSubject = pDoc.data().subject;
+          if (pDoc.exists) attDepartment = pDoc.data().department;
 
-          if (attSubject === paperSubject && (att.status === 'started' || att.status === 'exited_on_violation')) {
+          if (attDepartment === paperDepartment && (att.status === 'started' || att.status === 'exited_on_violation')) {
             const oldAttemptRef = db.collection('exam_attempts').doc(att.id);
             // C5 fix: Compute final elapsedTime including time since last startedAt
             const attStartedAt = att.startedAt ? new Date(att.startedAt).getTime() : Date.now();
@@ -557,8 +590,8 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     } else {
       mockExamAttempts.forEach((att) => {
         if (att.studentId === studentId && att.paperId !== paperId) {
-          const attSubject = mockPapers.get(att.paperId)?.subject || '';
-          if (attSubject === paperSubject && (att.status === 'started' || att.status === 'exited_on_violation')) {
+          const attDepartment = mockPapers.get(att.paperId)?.department || '';
+          if (attDepartment === paperDepartment && (att.status === 'started' || att.status === 'exited_on_violation')) {
             // C5 fix: Compute final elapsedTime before terminating
             const attStartedAt = att.startedAt ? new Date(att.startedAt).getTime() : Date.now();
             const sinceLastStart = att.status === 'started' ? Math.min(15, Math.max(0, Math.round((Date.now() - attStartedAt) / 1000))) : 0;
@@ -625,10 +658,10 @@ app.post('/start-exam', verifyToken, async (req, res) => {
       sessionId: attemptId,
       paperId,
       remainingTimeSeconds: calculatedTimeLeft,
-      warningsCount: subjectWarningsCount,
+      warningsCount: departmentWarningsCount,
       paper: {
         title: paperTitle,
-        subject: paperSubject
+        department: paperDepartment
       },
       questions: publicQuestions
     });
@@ -743,7 +776,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
   const attemptId = `${studentId}_${paperId}`;
 
   try {
-    let paperSubject = '';
+    let paperDepartment = '';
     let returnWarnings = 0;
     let nextStatus = 'exited_on_violation';
     let studentName = 'Student';
@@ -764,7 +797,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
         const paperDoc = await transaction.get(db.collection('papers').doc(paperId));
         let paperDuration = 2700;
         if (paperDoc.exists) {
-          paperSubject = paperDoc.data().subject;
+          paperDepartment = paperDoc.data().department;
           if (paperDoc.data().durationMinutes) {
             paperDuration = parseInt(paperDoc.data().durationMinutes) * 60;
           }
@@ -785,7 +818,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
           if (doc.id === attemptId) continue;
           const attDoc = doc.data();
           const pDoc = await db.collection('papers').doc(attDoc.paperId).get();
-          if (pDoc.exists && pDoc.data().subject === paperSubject) {
+          if (pDoc.exists && pDoc.data().department === paperDepartment) {
             cumulativeWarnings += attDoc.warnings || 0;
           }
         }
@@ -823,7 +856,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
         return res.status(400).json({ error: 'Violation cannot be reported for an inactive session.' });
       }
       studentName = attempt.studentName || 'Student';
-      paperSubject = mockPapers.get(paperId)?.subject || '';
+      paperDepartment = mockPapers.get(paperId)?.department || '';
 
       const paperObj = mockPapers.get(paperId);
       let paperDuration = 2700;
@@ -835,7 +868,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
 
       let cumulativeWarnings = 0;
       mockExamAttempts.forEach((val) => {
-        if (val.studentId === studentId && val.paperId !== paperId && mockPapers.get(val.paperId)?.subject === paperSubject) {
+        if (val.studentId === studentId && val.paperId !== paperId && mockPapers.get(val.paperId)?.department === paperDepartment) {
           cumulativeWarnings += val.warnings || 0;
         }
       });
@@ -862,13 +895,13 @@ app.post('/report-violation', verifyToken, async (req, res) => {
       attempt.overrideTimeSeconds = finalRemainingSeconds;
     }
 
-    console.log(`📡 Sending FCM notification for violation... Student: ${studentName}, Subject: ${paperSubject}, Violation Count: ${returnWarnings}, Action: ${nextStatus}`);
+    console.log(`📡 Sending FCM notification for violation... Student: ${studentName}, Subject: ${paperDepartment}, Violation Count: ${returnWarnings}, Action: ${nextStatus}`);
     
     const violationRecord = {
       studentId,
       studentName: studentName,
       paperId,
-      subject: paperSubject,
+      department: paperDepartment,
       reason,
       timestamp: new Date().toISOString(),
       time: new Date().toISOString(),
@@ -1251,21 +1284,30 @@ app.post('/teacher/deny', verifyToken, async (req, res) => {
 });
 
 // Endpoint to list all published papers
-app.get('/papers', async (req, res) => {
+app.get('/papers', verifyToken, async (req, res) => {
   try {
     let papersList = [];
     if (db) {
-      const snap = await db.collection('papers').where('status', '==', 'published').get();
+      let queryRef = db.collection('papers').where('status', '==', 'published');
+      
+      // Multi-tenancy filter
+      if (req.user.role === 'student' || req.user.role === 'teacher') {
+        if (req.user.department && req.user.department !== 'All') {
+           queryRef = queryRef.where('department', '==', req.user.department);
+        }
+      }
+
+      const snap = await queryRef.get();
       snap.forEach(doc => papersList.push({ id: doc.id, ...doc.data() }));
 
       // If Firestore has fewer than 3 papers, seed Set A, Set B, Set C directly into Firestore!
       if (papersList.length < 3) {
         console.log("🌱 Auto-seeding missing paper sets into Firestore database...");
         const seedPapers = [
-          { id: 'cse-set-a', title: 'CSE Set A: Intro to Programming', subject: 'Computer Science', status: 'published' },
-          { id: 'cse-set-b', title: 'CSE Set B: OOP Concepts', subject: 'Computer Science', status: 'published' },
-          { id: 'cse-set-c', title: 'CSE Set C: Data Structures', subject: 'Computer Science', status: 'published' },
-          { id: 'ee-set-a', title: "EE Set A: Ohm's Law Basics", subject: 'Electrical Engineering', status: 'published' }
+          { id: 'cse-set-a', title: 'CSE Set A: Intro to Programming', department: 'Computer Science', status: 'published' },
+          { id: 'cse-set-b', title: 'CSE Set B: OOP Concepts', department: 'Computer Science', status: 'published' },
+          { id: 'cse-set-c', title: 'CSE Set C: Data Structures', department: 'Computer Science', status: 'published' },
+          { id: 'ee-set-a', title: "EE Set A: Ohm's Law Basics", department: 'Electrical Engineering', status: 'published' }
         ];
 
         for (const p of seedPapers) {
@@ -1274,7 +1316,7 @@ app.get('/papers', async (req, res) => {
           if (!pDoc.exists) {
             await docRef.set({
               title: p.title,
-              subject: p.subject,
+              department: p.department,
               status: p.status,
               createdAt: new Date().toISOString()
             });
@@ -1292,7 +1334,7 @@ app.get('/papers', async (req, res) => {
               questionText: q.questionText,
               options: q.options,
               correctOptionIndex: q.correctOptionIndex,
-              subject: q.paperId.startsWith('ee') ? 'Electrical Engineering' : 'Computer Science'
+              department: q.paperId.startsWith('ee') ? 'Electrical Engineering' : 'Computer Science'
             });
           }
         }

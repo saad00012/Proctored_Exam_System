@@ -14,7 +14,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSubject, setSelectedSubject] = useState('All');
+  const [selectedDepartment, setSelectedDepartment] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [expandedStudentId, setExpandedStudentId] = useState(null);
 
@@ -62,8 +62,8 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
   ];
 
   const mockPapersList = [
-    { id: 'paper-1', title: 'Midterm Circuit Analysis', subject: 'Electrical Engineering', status: 'published' },
-    { id: 'paper-2', title: 'Data Structures Quiz 1', subject: 'Computer Science', status: 'published' }
+    { id: 'paper-1', title: 'Midterm Circuit Analysis', department: 'Electrical Engineering', status: 'published' },
+    { id: 'paper-2', title: 'Data Structures Quiz 1', department: 'Computer Science', status: 'published' }
   ];
 
   const mockQuestionsList = [
@@ -79,7 +79,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         { text: 'I = V * R', imageUrl: null }
       ],
       correctOptionIndex: 0,
-      subject: 'Electrical Engineering'
+      department: 'Electrical Engineering'
     }
   ];
 
@@ -143,20 +143,20 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     }
 
     setLoading(true);
-    const subject = getPaperSubject(attempt.paperId);
+    const department = getPaperDepartment(attempt.paperId);
 
     // Find next unused published paper in pool
-    const subjectPapers = papers.filter(p => p.subject === subject && p.status === 'published');
+    const departmentPapers = papers.filter(p => p.department === department && p.status === 'published');
     const studentAttempts = attempts.filter(a => a.studentId === attempt.studentId);
     const attemptedPaperIds = studentAttempts.map(a => a.paperId);
-    let unusedPaper = subjectPapers.find(p => !attemptedPaperIds.includes(p.id));
+    let unusedPaper = departmentPapers.find(p => !attemptedPaperIds.includes(p.id));
     if (!unusedPaper) {
       // Fallback: reuse the same paper if no other published paper is available
       unusedPaper = papers.find(p => p.id === attempt.paperId);
     }
 
     if (!unusedPaper) {
-      alert(`No papers available under subject "${subject}" to assign for this override.`);
+      alert(`No papers available under department "${department}" to assign for this override.`);
       setLoading(false);
       return;
     }
@@ -274,14 +274,14 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       return;
     }
 
-    const headers = ["Student Name", "Subject", "Paper Title", "Warnings", "Status", "Score", "Date"];
+    const headers = ["Student Name", "Department", "Paper Title", "Warnings", "Status", "Score", "Date"];
     const rows = attempts.map(attempt => {
       const stats = computeGradeDetails(attempt);
       const scoreStr = attempt.status === 'submitted' ? `${stats.score}/${stats.total}` : 'N/A';
       const dateStr = attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleString() : 'N/A';
       return [
         `"${attempt.studentName.replace(/"/g, '""')}"`,
-        `"${getPaperSubject(attempt.paperId)}"`,
+        `"${getPaperDepartment(attempt.paperId)}"`,
         `"${getPaperTitle(attempt.paperId).replace(/"/g, '""')}"`,
         attempt.warnings,
         attempt.status.toUpperCase(),
@@ -306,9 +306,9 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     return paper ? paper.title : 'Unknown Exam';
   };
 
-  const getPaperSubject = (paperId) => {
+  const getPaperDepartment = (paperId) => {
     const paper = papers.find(p => p.id === paperId);
-    return paper ? paper.subject : '';
+    return paper ? paper.department : '';
   };
 
   const parseTimestampToMs = (val) => {
@@ -373,9 +373,9 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       });
       
       const latestAttempt = sortedAttempts[0];
-      const latestSubject = getPaperSubject(latestAttempt.paperId);
+      const latestDepartment = getPaperDepartment(latestAttempt.paperId);
       const totalWarnings = group.attempts
-        .filter(a => getPaperSubject(a.paperId) === latestSubject)
+        .filter(a => getPaperDepartment(a.paperId) === latestDepartment)
         .reduce((sum, a) => sum + (a.warnings || 0), 0);
       
       return {
@@ -392,8 +392,8 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         return false;
       }
       
-      const latestSubject = getPaperSubject(student.latestAttempt.paperId);
-      if (selectedSubject !== 'All' && latestSubject !== selectedSubject) {
+      const latestDepartment = getPaperDepartment(student.latestAttempt.paperId);
+      if (selectedDepartment !== 'All' && latestDepartment !== selectedDepartment) {
         return false;
       }
 
@@ -409,7 +409,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     });
   };
 
-  const availableSubjects = ['All', ...new Set(papers.map(p => p.subject).filter(Boolean))];
+  const availableDepartments = ['All', ...new Set(papers.map(p => p.department).filter(Boolean))];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', textAlign: 'left' }}>
@@ -440,11 +440,11 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
             />
             <select 
               className="input-field" 
-              value={selectedSubject} 
-              onChange={(e) => setSelectedSubject(e.target.value)}
+              value={selectedDepartment} 
+              onChange={(e) => setSelectedDepartment(e.target.value)}
               style={{ maxWidth: '200px' }}
             >
-              {availableSubjects.map(sub => (
+              {availableDepartments.map(sub => (
                 <option key={sub} value={sub}>{sub}</option>
               ))}
             </select>
@@ -513,7 +513,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                         </div>
                         
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          Latest Exam: <strong>{getPaperTitle(student.latestAttempt.paperId)}</strong> ({getPaperSubject(student.latestAttempt.paperId)})
+                          Latest Exam: <strong>{getPaperTitle(student.latestAttempt.paperId)}</strong> ({getPaperDepartment(student.latestAttempt.paperId)})
                         </p>
                       </div>
 
@@ -639,8 +639,8 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
           {(() => {
             const stats = computeGradeDetails(selectedAttempt);
             const scorePercent = stats.total > 0 ? ((stats.score / stats.total) * 100).toFixed(0) : 0;
-            const activeSubject = getPaperSubject(selectedAttempt.paperId);
-            const allStudentAttempts = attempts.filter(a => a.studentId === selectedAttempt.studentId && getPaperSubject(a.paperId) === activeSubject);
+            const activeDepartment = getPaperDepartment(selectedAttempt.paperId);
+            const allStudentAttempts = attempts.filter(a => a.studentId === selectedAttempt.studentId && getPaperDepartment(a.paperId) === activeDepartment);
             const totalWarnings = allStudentAttempts.reduce((sum, a) => sum + (a.warnings || 0), 0);
             
             return (
@@ -797,7 +797,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
             </h3>
             <p style={{ fontSize: '0.95rem', marginBottom: '1.25rem' }}>
               <strong>Student Name:</strong> {reviewingAttempt.studentName}<br/>
-              <strong>Subject:</strong> {getPaperSubject(reviewingAttempt.paperId)}<br/>
+              <strong>Department:</strong> {getPaperDepartment(reviewingAttempt.paperId)}<br/>
               <strong>Compromised Paper:</strong> {getPaperTitle(reviewingAttempt.paperId)}<br/>
               <strong>Warnings Tally:</strong> {reviewingAttempt.warnings} (Threshold exceeded)
             </p>

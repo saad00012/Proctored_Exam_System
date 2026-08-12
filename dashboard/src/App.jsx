@@ -18,13 +18,13 @@ function App() {
   });
   const [role, setRole] = useState('teacher'); // 'superadmin' or 'teacher'
   const [teachers, setTeachers] = useState([
-    { uid: 'mock-uid-teacher-456', name: 'Mock Teacher (Dev)', email: 'teacher@dnyanshree.edu.in', subject: 'Computer Science' },
-    { uid: 'mock-uid-teacher-789', name: 'Dr. Neha Gupta', email: 'neha.gupta@dnyanshree.edu.in', subject: 'Data Structures' },
-    { uid: 'mock-uid-teacher-101', name: 'Prof. Suresh Patil', email: 'suresh.patil@dnyanshree.edu.in', subject: 'Electrical Engineering' }
+    { uid: 'mock-uid-teacher-456', name: 'Mock Teacher (Dev)', email: 'teacher@dnyanshree.edu.in', department: 'Computer Science' },
+    { uid: 'mock-uid-teacher-789', name: 'Dr. Neha Gupta', email: 'neha.gupta@dnyanshree.edu.in', department: 'Data Structures' },
+    { uid: 'mock-uid-teacher-101', name: 'Prof. Suresh Patil', email: 'suresh.patil@dnyanshree.edu.in', department: 'Electrical Engineering' }
   ]);
   const [newTeacherName, setNewTeacherName] = useState('');
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
-  const [newTeacherSubject, setNewTeacherSubject] = useState('Computer Science');
+  const [newTeacherDepartment, setNewTeacherDepartment] = useState('Computer Science');
   const [activeTab, setActiveTab] = useState('overview');
   const [allowedDomains, setAllowedDomains] = useState(['dnyanshree.edu.in']);
   const [newDomain, setNewDomain] = useState('');
@@ -97,7 +97,7 @@ function App() {
     const teacherData = {
       name: newTeacherName,
       email: newTeacherEmail,
-      subject: newTeacherSubject,
+      department: newTeacherDepartment,
       role: 'teacher'
     };
 
@@ -204,7 +204,7 @@ function App() {
       const paper1Id = "cse-set-a";
       await setDoc(doc(db, "papers", paper1Id), {
         title: "CSE Set A: Intro to Programming",
-        subject: "Computer Science",
+        department: "Computer Science",
         status: "published",
         createdAt: new Date().toISOString()
       });
@@ -218,13 +218,13 @@ function App() {
           { text: "O(n log n)", imageUrl: null }
         ],
         correctOptionIndex: 1,
-        subject: "Computer Science"
+        department: "Computer Science"
       });
 
       const paper2Id = "cse-set-b";
       await setDoc(doc(db, "papers", paper2Id), {
         title: "CSE Set B: OOP Concepts",
-        subject: "Computer Science",
+        department: "Computer Science",
         status: "published",
         createdAt: new Date().toISOString()
       });
@@ -238,13 +238,13 @@ function App() {
           { text: "Abstraction", imageUrl: null }
         ],
         correctOptionIndex: 0,
-        subject: "Computer Science"
+        department: "Computer Science"
       });
 
       const paper3Id = "cse-set-c";
       await setDoc(doc(db, "papers", paper3Id), {
         title: "CSE Set C: Data Structures",
-        subject: "Computer Science",
+        department: "Computer Science",
         status: "published",
         createdAt: new Date().toISOString()
       });
@@ -258,13 +258,13 @@ function App() {
           { text: "Graph", imageUrl: null }
         ],
         correctOptionIndex: 1,
-        subject: "Computer Science"
+        department: "Computer Science"
       });
 
       const paper4Id = "ee-set-a";
       await setDoc(doc(db, "papers", paper4Id), {
         title: "EE Set A: Ohm's Law Basics",
-        subject: "Electrical Engineering",
+        department: "Electrical Engineering",
         status: "published",
         createdAt: new Date().toISOString()
       });
@@ -278,7 +278,7 @@ function App() {
           { text: "I = V * R", imageUrl: null }
         ],
         correctOptionIndex: 0,
-        subject: "Electrical Engineering"
+        department: "Electrical Engineering"
       });
 
       alert("Sample CSE and EE exam papers seeded successfully!");
@@ -805,12 +805,12 @@ function App() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
-                      Primary Subject Dept
+                      Primary Department
                     </label>
                     <select
                       className="input-field"
-                      value={newTeacherSubject}
-                      onChange={(e) => setNewTeacherSubject(e.target.value)}
+                      value={newTeacherDepartment}
+                      onChange={(e) => setNewTeacherDepartment(e.target.value)}
                     >
                       <option value="Computer Science">Computer Science</option>
                       <option value="Mechanical Engineering">Mechanical Engineering</option>
@@ -840,7 +840,7 @@ function App() {
                         <h4 style={{ fontSize: '1rem', fontWeight: 600 }}>{t.name}</h4>
                         <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.email}</p>
                         <span className="badge badge-info" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
-                          {t.subject}
+                          {t.department}
                         </span>
                       </div>
                       {t.uid !== 'mock-uid-teacher-456' && (
