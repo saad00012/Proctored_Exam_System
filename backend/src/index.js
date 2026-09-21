@@ -4,6 +4,28 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Mock Database Models for fallback/local development
+const mockPapers = new Map([
+  ['cse-set-a', { id: 'cse-set-a', title: 'CSE Set A: OOP Concepts', department: 'Computer Science & Engineering', subject: 'Data Structures', status: 'published', durationMinutes: 45 }],
+  ['cse-set-b', { id: 'cse-set-b', title: 'CSE Set B: Sorting Algorithms', department: 'Computer Science & Engineering', subject: 'Data Structures', status: 'published', durationMinutes: 45 }],
+  ['cse-set-c', { id: 'cse-set-c', title: 'CSE Set C: Trees & Graphs', department: 'Computer Science & Engineering', subject: 'Data Structures', status: 'published', durationMinutes: 45 }],
+  ['cse-set-d', { id: 'cse-set-d', title: 'CSE Set D: Recursion Basics', department: 'Computer Science & Engineering', subject: 'Data Structures', status: 'published', durationMinutes: 45 }]
+]);
+
+const mockQuestions = [
+  { id: 'q1', paperId: 'cse-set-a', questionText: 'What is inheritance?', options: [{ text: 'Code reuse' }, { text: 'Polymorphism' }, { text: 'Encapsulation' }, { text: 'None' }], correctOptionIndex: 0 },
+  { id: 'q2', paperId: 'cse-set-a', questionText: 'What is OOP?', options: [{ text: 'Object Oriented Programming' }, { text: 'Procedural' }, { text: 'Functional' }, { text: 'Logical' }], correctOptionIndex: 0 }
+];
+
+const mockConfig = {
+  defaultDuration: 45,
+  warningThreshold: 3
+};
+
+const mockExamAttempts = new Map();
+let mockViolations = [];
+
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -61,6 +83,24 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   console.warn(`⚠️ Warning: Service account file not found at ${serviceAccountPath}. Running in Mock mode.`);
 }
 
+// Helper to check if a user has faculty/admin/superadmin privileges
+const isAdminOrTeacher = (user) => {
+  if (!user) return false;
+  const role = (user.role || '').toLowerCase();
+  const email = (user.email || '').toLowerCase();
+  return (
+    role === 'teacher' ||
+    role === 'admin' ||
+    role === 'superadmin' ||
+    role === 'faculty' ||
+    (user.uid && (user.uid.startsWith('mock-uid-teacher') || user.uid.startsWith('mock-uid-admin'))) ||
+    email.startsWith('admin') ||
+    email.startsWith('teacher') ||
+    email.includes('admin') ||
+    email.includes('faculty')
+  );
+};
+
 // Helper middleware for Firebase ID token verification with server-side domain verification
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -70,39 +110,10 @@ const verifyToken = async (req, res, next) => {
 
   const token = authHeader.split('Bearer ')[1];
 
-  // 1. Check for explicit mock headers first to facilitate offline development
-  if (token.startsWith('mock-')) {
-    console.log(`⚠️ Mocking token verification for token: ${token}`);
-    // Mock Admin
-    if (token === 'mock-superadmin') {
-      req.user = { uid: 'mock-uid-superadmin-001', email: 'admin@dnyanshree.edu.in', role: 'superadmin', name: 'Mock Superadmin', department: 'All' };
-      return next();
-    }
-    // Mock Teacher
-    if (token === 'mock-teacher') {
-      req.user = { uid: 'mock-uid-teacher-456', email: 'teacher@dnyanshree.edu.in', role: 'teacher', name: 'Mock Teacher (Dev)', department: 'Computer Science' };
-      return next();
-    }
-    // Mock Student
-    if (token === 'mock-student') {
-      req.user = { uid: 'mock-uid-student-123', email: 'student@dnyanshree.edu.in', role: 'student', name: 'Mock Student (Dev)', department: 'Computer Science' };
-      return next();
-    }
-    return next();
-  }
-
   // 2. Real Firebase token verification
   if (!admin || !db) {
-    // If user sent a non-mock token but Firebase is not initialized, reject or fallback to mock student
-    console.warn('⚠️ Firebase not initialized but non-mock token received. Fallback to mock student.');
-    req.user = {
-      uid: 'mock-uid-student-123',
-      email: 'student@dnyanshree.edu.in',
-      role: 'student',
-      name: 'Mock Student',
-      department: 'Computer Science'
-    };
-    return next();
+    console.error('❌ Firebase not initialized. Cannot verify token.');
+    return res.status(500).json({ error: 'Internal Server Error: Database not connected.' });
   }
 
   try {
@@ -123,15 +134,51 @@ const verifyToken = async (req, res, next) => {
     // Attach decoded user info
     req.user = decodedToken;
     
-    // Fetch role from Firestore user profile
+    // Fetch role & details from Firestore user profile
     const userDoc = await db.collection('users').doc(decodedToken.uid).get();
     if (userDoc.exists) {
-      req.user.role = userDoc.data().role;
-      req.user.name = userDoc.data().name;
-      req.user.department = userDoc.data().department || 'Unassigned';
+      const data = userDoc.data();
+      const rawRole = (data.role || '').toLowerCase();
+      req.user.role = (rawRole === 'teacher' || rawRole === 'admin' || rawRole === 'superadmin' || rawRole === 'faculty') 
+        ? rawRole 
+        : (data.role || 'student');
+      req.user.name = data.name || decodedToken.name || (email ? email.split('@')[0] : 'User');
+      req.user.department = data.department || 'Unassigned';
+      req.user.semester = data.semester || 'N/A';
+      req.user.prnNumber = data.prnNumber || 'N/A';
     } else {
-      req.user.role = 'student'; // default role
+      // Auto-heal: If user doc is missing in Firestore, resolve from Firebase Auth
+      let resolvedName = decodedToken.name || (email ? email.split('@')[0] : 'User');
+      try {
+        const authRecord = await admin.auth().getUser(decodedToken.uid);
+        if (authRecord.displayName) {
+          resolvedName = authRecord.displayName;
+        }
+      } catch (e) {
+        // fallback
+      }
+
+      const isTeacherEmail = email.toLowerCase().startsWith('admin') || email.toLowerCase().startsWith('teacher') || email.toLowerCase().includes('admin');
+      const defaultRole = isTeacherEmail ? 'teacher' : 'student';
+
+      req.user.role = defaultRole;
+      req.user.name = resolvedName;
       req.user.department = 'Unassigned';
+      req.user.semester = 'N/A';
+      req.user.prnNumber = 'N/A';
+
+      // Heal user doc in Firestore in background
+      db.collection('users').doc(decodedToken.uid).set({
+        uid: decodedToken.uid,
+        name: resolvedName,
+        email: email,
+        role: defaultRole,
+        department: 'Unassigned',
+        semester: 'N/A',
+        prnNumber: 'N/A',
+        collegeDomain: domain,
+        createdAt: new Date().toISOString()
+      }).catch(err => console.warn('Could not auto-heal user doc in Firestore:', err.message));
     }
 
     next();
@@ -185,9 +232,9 @@ app.post('/register-check', async (req, res) => {
 
 // 3. Create/Update Profile (called after registration in Firebase Auth)
 app.post('/create-profile', verifyToken, async (req, res) => {
-  const { name, phoneNumber, role, department, semester } = req.body;
-  if (!name || !phoneNumber || !role) {
-    return res.status(400).json({ error: 'Name, phone number, and role are required.' });
+  const { name, phoneNumber, role, department, semester, prnNumber } = req.body;
+  if (!name || !role) {
+    return res.status(400).json({ error: 'Name and role are required.' });
   }
 
   const email = req.user.email;
@@ -198,11 +245,12 @@ app.post('/create-profile', verifyToken, async (req, res) => {
     uid,
     name,
     email,
-    phoneNumber,
+    phoneNumber: phoneNumber || '',
     role: role === 'teacher' ? 'teacher' : 'student',
     collegeDomain: domain,
     department: department || 'Unassigned',
     semester: semester || 'N/A',
+    prnNumber: (prnNumber || 'N/A').toUpperCase(),
     createdAt: new Date().toISOString()
   };
 
@@ -228,113 +276,7 @@ app.post('/create-profile', verifyToken, async (req, res) => {
   }
 });
 
-// In-Memory mock data for offline development fallback
-const mockExamAttempts = new Map();
-const mockConfig = { defaultDuration: 45, warningThreshold: 3 };
-const mockViolations = [];
-const mockPapers = new Map([
-  ['paper-1', { id: 'paper-1', title: 'Midterm Circuit Analysis', department: 'Electrical Engineering', status: 'published' }],
-  ['paper-2', { id: 'paper-2', title: 'Data Structures Quiz 1', department: 'Computer Science', status: 'published' }],
-  ['paper-3', { id: 'paper-3', title: 'Data Structures Quiz 2', department: 'Computer Science', status: 'published' }],
-  ['cse-set-a', { id: 'cse-set-a', title: 'CSE Set A: Intro to Programming', department: 'Computer Science', status: 'published' }],
-  ['cse-set-b', { id: 'cse-set-b', title: 'CSE Set B: OOP Concepts', department: 'Computer Science', status: 'published' }],
-  ['cse-set-c', { id: 'cse-set-c', title: 'CSE Set C: Data Structures', department: 'Computer Science', status: 'published' }],
-  ['ee-set-a', { id: 'ee-set-a', title: "EE Set A: Ohm's Law Basics", department: 'Electrical Engineering', status: 'published' }]
-]);
 
-const mockQuestions = [
-  // --- EE SET A ---
-  {
-    id: 'q-ee-1',
-    paperId: 'ee-set-a',
-    questionText: "[ELECTRICAL SET A] Question 1: Which formula represents Ohm's Law?",
-    options: [
-      { text: 'V = I * R', imageUrl: null },
-      { text: 'P = V * I', imageUrl: null },
-      { text: 'R = V * P', imageUrl: null },
-      { text: 'I = V * R', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  },
-  {
-    id: 'q-paper-1',
-    paperId: 'paper-1',
-    questionText: "[ELECTRICAL SET A] Question 1: Which formula represents Ohm's Law?",
-    options: [
-      { text: 'V = I * R', imageUrl: null },
-      { text: 'P = V * I', imageUrl: null },
-      { text: 'R = V * P', imageUrl: null },
-      { text: 'I = V * R', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  },
-
-  // --- CSE SET A ---
-  {
-    id: 'q-cse-a-1',
-    paperId: 'cse-set-a',
-    questionText: "[SET A] Question 1: What is the average time complexity of Binary Search in a sorted array?",
-    options: [
-      { text: 'O(log n)', imageUrl: null },
-      { text: 'O(n)', imageUrl: null },
-      { text: 'O(n^2)', imageUrl: null },
-      { text: 'O(1)', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  },
-  {
-    id: 'q-paper-2',
-    paperId: 'paper-2',
-    questionText: "[SET A] Question 1: What is the average time complexity of Binary Search in a sorted array?",
-    options: [
-      { text: 'O(log n)', imageUrl: null },
-      { text: 'O(n)', imageUrl: null },
-      { text: 'O(n^2)', imageUrl: null },
-      { text: 'O(1)', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  },
-
-  // --- CSE SET B ---
-  {
-    id: 'q-cse-b-1',
-    paperId: 'cse-set-b',
-    questionText: "[SET B] Question 1: Which data structure operates on a Last-In, First-Out (LIFO) order?",
-    options: [
-      { text: 'Stack', imageUrl: null },
-      { text: 'Queue', imageUrl: null },
-      { text: 'Array', imageUrl: null },
-      { text: 'Linked List', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  },
-  {
-    id: 'q-paper-3',
-    paperId: 'paper-3',
-    questionText: "[SET B] Question 1: Which data structure operates on a Last-In, First-Out (LIFO) order?",
-    options: [
-      { text: 'Stack', imageUrl: null },
-      { text: 'Queue', imageUrl: null },
-      { text: 'Array', imageUrl: null },
-      { text: 'Linked List', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  },
-
-  // --- CSE SET C ---
-  {
-    id: 'q-cse-c-1',
-    paperId: 'cse-set-c',
-    questionText: "[SET C] Question 1: Which graph traversal algorithm uses a Queue data structure?",
-    options: [
-      { text: 'Breadth-First Search (BFS)', imageUrl: null },
-      { text: 'Depth-First Search (DFS)', imageUrl: null },
-      { text: 'Dijkstra Algorithm', imageUrl: null },
-      { text: 'Kruskal Algorithm', imageUrl: null }
-    ],
-    correctOptionIndex: 0
-  }
-];
 
 // 4. Start Exam
 app.post('/start-exam', verifyToken, async (req, res) => {
@@ -345,10 +287,15 @@ app.post('/start-exam', verifyToken, async (req, res) => {
 
   const studentId = req.user.uid;
   const studentName = req.user.name || 'Student';
+  const studentEmail = req.user.email || '';
+  const studentPrn = req.user.prnNumber || 'N/A';
+  const studentDept = req.user.department || 'Unassigned';
+  const studentSem = req.user.semester || 'N/A';
 
   try {
     let paperDepartment = '';
     let paperTitle = '';
+    let paperSubject = '';
 
     // 1. Fetch Paper details
     let paperObj = null;
@@ -366,11 +313,40 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     }
     paperDepartment = paperObj.department;
     paperTitle = paperObj.title;
+    paperSubject = paperObj.subject || paperObj.title || '';
 
-    // Security Check: Ensure student matches paper department
-    if (req.user.role === 'student' && req.user.department !== 'All') {
-      if (paperDepartment !== req.user.department) {
+    // Security Check: Ensure student matches paper department and semester
+    if (req.user.role === 'student') {
+      if (req.user.department !== 'All' && paperDepartment !== req.user.department) {
         return res.status(403).json({ error: 'Forbidden: This exam belongs to a different department.' });
+      }
+      if (paperObj.semester && req.user.semester && String(paperObj.semester) !== String(req.user.semester)) {
+        return res.status(403).json({ error: `Forbidden: This exam is for Semester ${paperObj.semester}, but you are in Semester ${req.user.semester}.` });
+      }
+    }
+
+    // Schedule Window Check: Block students from starting outside the configured time window
+    if (req.user.role === 'student') {
+      const now = new Date();
+      if (paperObj.scheduleStart) {
+        const scheduleStart = new Date(paperObj.scheduleStart);
+        if (now < scheduleStart) {
+          return res.status(403).json({
+            error: `Exam has not started yet. It is scheduled to open on ${scheduleStart.toLocaleString()}. Please wait.`,
+            scheduleStart: paperObj.scheduleStart,
+            scheduleEnd: paperObj.scheduleEnd || null
+          });
+        }
+      }
+      if (paperObj.scheduleEnd) {
+        const scheduleEnd = new Date(paperObj.scheduleEnd);
+        if (now > scheduleEnd) {
+          return res.status(403).json({
+            error: `Exam window has closed. This exam ended on ${scheduleEnd.toLocaleString()}.`,
+            scheduleStart: paperObj.scheduleStart || null,
+            scheduleEnd: paperObj.scheduleEnd
+          });
+        }
       }
     }
 
@@ -416,28 +392,32 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     }
 
     // A2 Optimization: Batch pre-fetch all paper subjects for prior attempts to eliminate N+1 Firestore queries
-    const paperDepartmentMap = {};
+    const paperSubjectMap = {};
     if (db && priorAttempts.length > 0) {
       const uniquePaperIds = [...new Set(priorAttempts.map(a => a.paperId))];
       const paperDocs = await Promise.all(
         uniquePaperIds.map(id => db.collection('papers').doc(id).get())
       );
       paperDocs.forEach(doc => {
-        if (doc.exists) paperDepartmentMap[doc.id] = doc.data().department;
+        if (doc.exists) {
+          const data = doc.data();
+          paperSubjectMap[doc.id] = data.subject || data.title || '';
+        }
       });
     } else {
       priorAttempts.forEach(att => {
-        paperDepartmentMap[att.paperId] = mockPapers.get(att.paperId)?.department || '';
+        const mockP = mockPapers.get(att.paperId);
+        paperSubjectMap[att.paperId] = mockP?.subject || mockP?.title || '';
       });
     }
 
-    const getSubjectForPaper = (pId) => paperDepartmentMap[pId] || '';
+    const getSubjectForPaper = (pId) => paperSubjectMap[pId] || '';
 
     // Check if user is currently blocked (failed malpractice or blocked pending review in this subject)
     for (const att of priorAttempts) {
       if (att.status === 'blocked_pending_review' || att.status === 'malpractice_failed') {
-        const attDepartment = getSubjectForPaper(att.paperId);
-        if (attDepartment === paperDepartment) {
+        const attSubject = getSubjectForPaper(att.paperId);
+        if (attSubject === paperSubject) {
           isBlocked = true;
           break;
         }
@@ -452,8 +432,8 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     let hasSameSubjectSoftViolation = false;
     for (const att of priorAttempts) {
       if (att.status === 'exited_on_violation') {
-        const attDepartment = getSubjectForPaper(att.paperId);
-        if (attDepartment === paperDepartment) {
+        const attSubject = getSubjectForPaper(att.paperId);
+        if (attSubject === paperSubject) {
           hasSameSubjectSoftViolation = true;
           break;
         }
@@ -464,7 +444,7 @@ app.post('/start-exam', verifyToken, async (req, res) => {
       let candidatePapers = [];
       if (db) {
         const papersSnapshot = await db.collection('papers')
-          .where('subject', '==', paperDepartment)
+          .where('subject', '==', paperSubject)
           .where('status', '==', 'published')
           .get();
         papersSnapshot.forEach(doc => {
@@ -472,7 +452,7 @@ app.post('/start-exam', verifyToken, async (req, res) => {
         });
       } else {
         mockPapers.forEach((val, key) => {
-          if (val.department === paperDepartment && val.status === 'published') {
+          if ((val.subject || val.title || '') === paperSubject && val.status === 'published') {
             candidatePapers.push({ id: key, ...val });
           }
         });
@@ -495,17 +475,17 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     // 4. Calculate total elapsed time across prior attempts in this subject
     let totalPriorElapsed = 0;
     let customOverrideSeconds = 0;
-    let departmentWarningsCount = 0;
+    let subjectWarningsCount = 0;
 
     for (const att of priorAttempts) {
-      const attDepartment = getSubjectForPaper(att.paperId);
+      const attSubject = getSubjectForPaper(att.paperId);
 
-      if (attDepartment === paperDepartment) {
-        departmentWarningsCount += att.warnings || 0;
+      if (attSubject === paperSubject) {
+        subjectWarningsCount += att.warnings || 0;
       }
 
       if (att.paperId !== paperId) {
-        if (attDepartment === paperDepartment) {
+        if (attSubject === paperSubject) {
           totalPriorElapsed += att.elapsedTime || 0;
           // C3 fix: If this is a violated attempt with remaining override time, carry it forward
           if (att.status === 'exited_on_violation' && att.overrideTimeSeconds > 0) {
@@ -549,6 +529,10 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     const attemptData = {
       studentId,
       studentName,
+      studentEmail,
+      prnNumber: studentPrn,
+      department: studentDept,
+      semester: studentSem,
       paperId,
       answers: {},
       status: 'started',
@@ -564,11 +548,11 @@ app.post('/start-exam', verifyToken, async (req, res) => {
       let terminatedCount = 0;
       for (const att of priorAttempts) {
         if (att.paperId !== paperId) {
-          let attDepartment = '';
+          let attSubject = '';
           const pDoc = await db.collection('papers').doc(att.paperId).get();
-          if (pDoc.exists) attDepartment = pDoc.data().department;
+          if (pDoc.exists) attSubject = pDoc.data().subject || pDoc.data().title || '';
 
-          if (attDepartment === paperDepartment && (att.status === 'started' || att.status === 'exited_on_violation')) {
+          if (attSubject === paperSubject && (att.status === 'started' || att.status === 'exited_on_violation')) {
             const oldAttemptRef = db.collection('exam_attempts').doc(att.id);
             // C5 fix: Compute final elapsedTime including time since last startedAt
             const attStartedAt = att.startedAt ? new Date(att.startedAt).getTime() : Date.now();
@@ -590,8 +574,9 @@ app.post('/start-exam', verifyToken, async (req, res) => {
     } else {
       mockExamAttempts.forEach((att) => {
         if (att.studentId === studentId && att.paperId !== paperId) {
-          const attDepartment = mockPapers.get(att.paperId)?.department || '';
-          if (attDepartment === paperDepartment && (att.status === 'started' || att.status === 'exited_on_violation')) {
+          const mockP = mockPapers.get(att.paperId);
+          const attSubject = mockP?.subject || mockP?.title || '';
+          if (attSubject === paperSubject && (att.status === 'started' || att.attStatus === 'exited_on_violation')) {
             // C5 fix: Compute final elapsedTime before terminating
             const attStartedAt = att.startedAt ? new Date(att.startedAt).getTime() : Date.now();
             const sinceLastStart = att.status === 'started' ? Math.min(15, Math.max(0, Math.round((Date.now() - attStartedAt) / 1000))) : 0;
@@ -658,7 +643,7 @@ app.post('/start-exam', verifyToken, async (req, res) => {
       sessionId: attemptId,
       paperId,
       remainingTimeSeconds: calculatedTimeLeft,
-      warningsCount: departmentWarningsCount,
+      warningsCount: subjectWarningsCount,
       paper: {
         title: paperTitle,
         department: paperDepartment
@@ -777,6 +762,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
 
   try {
     let paperDepartment = '';
+    let paperSubject = '';
     let returnWarnings = 0;
     let nextStatus = 'exited_on_violation';
     let studentName = 'Student';
@@ -798,6 +784,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
         let paperDuration = 2700;
         if (paperDoc.exists) {
           paperDepartment = paperDoc.data().department;
+          paperSubject = paperDoc.data().subject || paperDoc.data().title || '';
           if (paperDoc.data().durationMinutes) {
             paperDuration = parseInt(paperDoc.data().durationMinutes) * 60;
           }
@@ -818,7 +805,7 @@ app.post('/report-violation', verifyToken, async (req, res) => {
           if (doc.id === attemptId) continue;
           const attDoc = doc.data();
           const pDoc = await db.collection('papers').doc(attDoc.paperId).get();
-          if (pDoc.exists && pDoc.data().department === paperDepartment) {
+          if (pDoc.exists && (pDoc.data().subject || pDoc.data().title || '') === paperSubject) {
             cumulativeWarnings += attDoc.warnings || 0;
           }
         }
@@ -837,7 +824,23 @@ app.post('/report-violation', verifyToken, async (req, res) => {
         const finalRemainingSeconds = Math.max(0, currentLimit - sessionElapsed);
 
         if (totalWarningsInSubject >= warningThreshold) {
-          nextStatus = 'blocked_pending_review';
+          // Check if student has unused paper sets left in this subject pool
+          const papersSnapshot = await db.collection('papers')
+            .where('subject', '==', paperSubject)
+            .where('status', '==', 'published')
+            .get();
+          const candidatePaperIds = papersSnapshot.docs.map(doc => doc.id);
+          
+          const attemptedPaperIds = new Set(attemptsSnapshot.docs.map(doc => doc.data().paperId));
+          attemptedPaperIds.add(paperId); // Include current paper
+
+          const unusedPapersCount = candidatePaperIds.filter(pId => !attemptedPaperIds.has(pId)).length;
+
+          if (unusedPapersCount === 0) {
+            nextStatus = 'malpractice_failed'; // Permanent block
+          } else {
+            nextStatus = 'blocked_pending_review'; // Soft-block, overrideable
+          }
         }
 
         transaction.update(attemptRef, {
@@ -856,19 +859,22 @@ app.post('/report-violation', verifyToken, async (req, res) => {
         return res.status(400).json({ error: 'Violation cannot be reported for an inactive session.' });
       }
       studentName = attempt.studentName || 'Student';
-      paperDepartment = mockPapers.get(paperId)?.department || '';
+      const mockP = mockPapers.get(paperId);
+      paperDepartment = mockP?.department || '';
+      paperSubject = mockP?.subject || mockP?.title || '';
 
-      const paperObj = mockPapers.get(paperId);
       let paperDuration = 2700;
-      if (paperObj && paperObj.durationMinutes) {
-        paperDuration = parseInt(paperObj.durationMinutes) * 60;
+      if (mockP && mockP.durationMinutes) {
+        paperDuration = parseInt(mockP.durationMinutes) * 60;
       }
 
       let warningThreshold = mockConfig.warningThreshold;
 
       let cumulativeWarnings = 0;
       mockExamAttempts.forEach((val) => {
-        if (val.studentId === studentId && val.paperId !== paperId && mockPapers.get(val.paperId)?.department === paperDepartment) {
+        const valP = mockPapers.get(val.paperId);
+        const valSubject = valP?.subject || valP?.title || '';
+        if (val.studentId === studentId && val.paperId !== paperId && valSubject === paperSubject) {
           cumulativeWarnings += val.warnings || 0;
         }
       });
@@ -886,7 +892,28 @@ app.post('/report-violation', verifyToken, async (req, res) => {
       const finalRemainingSeconds = Math.max(0, currentLimit - sessionElapsed);
 
       if (totalWarningsInSubject >= warningThreshold) {
-        nextStatus = 'blocked_pending_review';
+        const candidatePaperIds = [];
+        mockPapers.forEach((val, key) => {
+          if ((val.subject || val.title || '') === paperSubject && val.status === 'published') {
+            candidatePaperIds.push(key);
+          }
+        });
+
+        const attemptedPaperIds = new Set();
+        mockExamAttempts.forEach((val) => {
+          if (val.studentId === studentId) {
+            attemptedPaperIds.add(val.paperId);
+          }
+        });
+        attemptedPaperIds.add(paperId);
+
+        const unusedPapersCount = candidatePaperIds.filter(pId => !attemptedPaperIds.has(pId)).length;
+
+        if (unusedPapersCount === 0) {
+          nextStatus = 'malpractice_failed';
+        } else {
+          nextStatus = 'blocked_pending_review';
+        }
       }
 
       attempt.status = nextStatus;
@@ -1158,9 +1185,9 @@ app.post('/teacher/override', verifyToken, async (req, res) => {
     return res.status(400).json({ error: 'Student ID and override minutes are required.' });
   }
 
-  // Ensure user is teacher
-  if (req.user.role !== 'teacher' && !req.user.uid.startsWith('mock-uid-teacher')) {
-    return res.status(403).json({ error: 'Only teachers can grant exam overrides.' });
+  // Ensure user is teacher/admin
+  if (!isAdminOrTeacher(req.user)) {
+    return res.status(403).json({ error: 'Only teachers or admins can grant exam overrides.' });
   }
 
   try {
@@ -1175,19 +1202,21 @@ app.post('/teacher/override', verifyToken, async (req, res) => {
       attempt = mockExamAttempts.get(targetAttemptId);
     }
 
-    // If target attempt wasn't found by exact paperId, find any blocked attempt for that student
+    // If target attempt wasn't found by exact paperId, find any overrideable attempt for that student
     if (!attempt) {
       if (db) {
         const snap = await db.collection('exam_attempts').where('studentId', '==', studentId).get();
         if (!snap.empty) {
-          const foundDoc = snap.docs.find(d => d.data().status === 'blocked_pending_review' || d.data().status === 'exited_on_violation') || snap.docs[0];
-          attempt = foundDoc.data();
-          actualPaperId = attempt.paperId;
+          const foundDoc = snap.docs.find(d => d.data().status === 'blocked_pending_review' || d.data().status === 'exited_on_violation');
+          if (foundDoc) {
+            attempt = foundDoc.data();
+            actualPaperId = attempt.paperId;
+          }
         }
       } else {
         mockExamAttempts.forEach((val) => {
           if (val.studentId === studentId) {
-            if (!attempt || val.status === 'blocked_pending_review' || val.status === 'exited_on_violation') {
+            if (val.status === 'blocked_pending_review' || val.status === 'exited_on_violation') {
               attempt = val;
               actualPaperId = val.paperId;
             }
@@ -1197,7 +1226,15 @@ app.post('/teacher/override', verifyToken, async (req, res) => {
     }
 
     if (!attempt) {
-      return res.status(404).json({ error: 'No attempt found to grant override for this student.' });
+      return res.status(404).json({ error: 'No active or blocked attempt found to grant override for this student.' });
+    }
+
+    if (attempt.status === 'malpractice_failed') {
+      return res.status(403).json({ error: 'Cannot override: This student is permanently blocked due to malpractice across all sets.' });
+    }
+
+    if (attempt.status === 'submitted') {
+      return res.status(400).json({ error: 'Cannot override: This exam has already been submitted.' });
     }
 
     const keyId = `${attempt.studentId}_${actualPaperId}`;
@@ -1244,9 +1281,9 @@ app.post('/teacher/deny', verifyToken, async (req, res) => {
     return res.status(400).json({ error: 'Student ID and Paper ID are required.' });
   }
 
-  // Ensure user is teacher
-  if (req.user.role !== 'teacher' && !req.user.uid.startsWith('mock-uid-teacher')) {
-    return res.status(403).json({ error: 'Only teachers can deny exam overrides.' });
+  // Ensure user is teacher/admin
+  if (!isAdminOrTeacher(req.user)) {
+    return res.status(403).json({ error: 'Only teachers or admins can deny exam overrides.' });
   }
 
   const attemptId = `${studentId}_${paperId}`;
@@ -1283,6 +1320,129 @@ app.post('/teacher/deny', verifyToken, async (req, res) => {
   }
 });
 
+// 15. Teacher: Clear student attempts & violations for a specific subject (logs cleanup)
+app.post('/teacher/clear-student-attempts', verifyToken, async (req, res) => {
+  const { studentId, paperId } = req.body;
+  if (!studentId || !paperId) {
+    return res.status(400).json({ error: 'Student ID and Paper ID are required.' });
+  }
+
+  // Ensure user is teacher/admin
+  if (!isAdminOrTeacher(req.user)) {
+    return res.status(403).json({ error: 'Only teachers or admins can clear student attempts.' });
+  }
+
+  try {
+    let paperSubject = '';
+    let paperDepartment = '';
+    
+    if (db) {
+      const paperDoc = await db.collection('papers').doc(paperId).get();
+      if (!paperDoc.exists) {
+        return res.status(404).json({ error: 'Paper not found.' });
+      }
+      paperSubject = paperDoc.data().subject || paperDoc.data().title || '';
+      paperDepartment = paperDoc.data().department || '';
+    } else {
+      const mockP = mockPapers.get(paperId);
+      if (!mockP) return res.status(404).json({ error: 'Paper not found (mock).' });
+      paperSubject = mockP.subject || mockP.title || '';
+      paperDepartment = mockP.department || '';
+    }
+
+    // 1. Delete attempts matching the subject
+    let deletedAttemptsCount = 0;
+    let deletedViolationsCount = 0;
+
+    if (db) {
+      // Find all papers in this subject pool
+      const papersSnap = await db.collection('papers')
+        .where('subject', '==', paperSubject)
+        .get();
+      const paperIds = papersSnap.docs.map(doc => doc.id);
+      if (!paperIds.includes(paperId)) {
+        paperIds.push(paperId);
+      }
+
+      // Delete exam attempts
+      const batch = db.batch();
+      const attemptsSnap = await db.collection('exam_attempts')
+        .where('studentId', '==', studentId)
+        .get();
+      
+      let attemptsBatchCount = 0;
+      attemptsSnap.forEach(doc => {
+        const attempt = doc.data();
+        if (paperIds.includes(attempt.paperId)) {
+          batch.delete(doc.ref);
+          attemptsBatchCount++;
+          deletedAttemptsCount++;
+        }
+      });
+
+      // Delete violations
+      const violationsSnap = await db.collection('violations')
+        .where('studentId', '==', studentId)
+        .get();
+      
+      violationsSnap.forEach(doc => {
+        const violation = doc.data();
+        if (paperIds.includes(violation.paperId)) {
+          batch.delete(doc.ref);
+          deletedViolationsCount++;
+        }
+      });
+
+      if (attemptsBatchCount > 0 || deletedViolationsCount > 0) {
+        await batch.commit();
+      }
+
+      // Log to audit log
+      await db.collection('audit_logs').add({
+        action: 'clear_student_logs',
+        teacherId: req.user.uid,
+        teacherName: req.user.name || 'Teacher',
+        studentId,
+        subject: paperSubject,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // Mock mode delete
+      const mockPaperIds = [];
+      mockPapers.forEach((val, key) => {
+        if ((val.subject || val.title) === paperSubject) {
+          mockPaperIds.push(key);
+        }
+      });
+      if (!mockPaperIds.includes(paperId)) {
+        mockPaperIds.push(paperId);
+      }
+
+      mockExamAttempts.forEach((val, key) => {
+        if (val.studentId === studentId && mockPaperIds.includes(val.paperId)) {
+          mockExamAttempts.delete(key);
+          deletedAttemptsCount++;
+        }
+      });
+
+      // Remove mock violations
+      const oldLen = mockViolations.length;
+      mockViolations = mockViolations.filter(v => !(v.studentId === studentId && mockPaperIds.includes(v.paperId)));
+      deletedViolationsCount = oldLen - mockViolations.length;
+    }
+
+    res.json({
+      success: true,
+      message: `Cleared attempts and violations successfully for subject "${paperSubject}".`,
+      deletedAttempts: deletedAttemptsCount,
+      deletedViolations: deletedViolationsCount
+    });
+  } catch (error) {
+    console.error('Error in /teacher/clear-student-attempts:', error);
+    res.status(500).json({ error: 'Failed to clear student attempts: ' + error.message });
+  }
+});
+
 // Endpoint to list all published papers
 app.get('/papers', verifyToken, async (req, res) => {
   try {
@@ -1300,53 +1460,27 @@ app.get('/papers', verifyToken, async (req, res) => {
       const snap = await queryRef.get();
       snap.forEach(doc => papersList.push({ id: doc.id, ...doc.data() }));
 
-      // If Firestore has fewer than 3 papers, seed Set A, Set B, Set C directly into Firestore!
-      if (papersList.length < 3) {
-        console.log("🌱 Auto-seeding missing paper sets into Firestore database...");
-        const seedPapers = [
-          { id: 'cse-set-a', title: 'CSE Set A: Intro to Programming', department: 'Computer Science', status: 'published' },
-          { id: 'cse-set-b', title: 'CSE Set B: OOP Concepts', department: 'Computer Science', status: 'published' },
-          { id: 'cse-set-c', title: 'CSE Set C: Data Structures', department: 'Computer Science', status: 'published' },
-          { id: 'ee-set-a', title: "EE Set A: Ohm's Law Basics", department: 'Electrical Engineering', status: 'published' }
-        ];
-
-        for (const p of seedPapers) {
-          const docRef = db.collection('papers').doc(p.id);
-          const pDoc = await docRef.get();
-          if (!pDoc.exists) {
-            await docRef.set({
-              title: p.title,
-              department: p.department,
-              status: p.status,
-              createdAt: new Date().toISOString()
-            });
-            papersList.push(p);
-          }
-        }
-
-        // Seed respective questions into Firestore
-        for (const q of mockQuestions) {
-          const qRef = db.collection('questions').doc(q.id);
-          const qDoc = await qRef.get();
-          if (!qDoc.exists) {
-            await qRef.set({
-              paperId: q.paperId,
-              questionText: q.questionText,
-              options: q.options,
-              correctOptionIndex: q.correctOptionIndex,
-              department: q.paperId.startsWith('ee') ? 'Electrical Engineering' : 'Computer Science'
-            });
-          }
-        }
-      }
     }
     
-    // Always ensure default pool papers (Set A, Set B, Set C, EE Set A) are present in available papers list
-    mockPapers.forEach((val, key) => {
-      if (!papersList.some(p => p.id === key || p.title === val.title)) {
-        papersList.push({ id: key, ...val });
-      }
-    });
+    // Only return mock papers when database connection is absent (mock mode)
+    if (!db) {
+      mockPapers.forEach((val, key) => {
+        if (!papersList.some(p => p.id === key || p.title === val.title)) {
+          papersList.push({ id: key, ...val });
+        }
+      });
+    }
+
+    // Schedule Window & Semester Filter: students only see papers that are within their time window and semester
+    if (req.user.role === 'student') {
+      const now = new Date();
+      papersList = papersList.filter(paper => {
+        if (paper.scheduleStart && now < new Date(paper.scheduleStart)) return false;
+        if (paper.scheduleEnd && now > new Date(paper.scheduleEnd)) return false;
+        if (paper.semester && req.user.semester && String(paper.semester) !== String(req.user.semester)) return false;
+        return true;
+      });
+    }
 
     res.json({ papers: papersList });
   } catch (error) {
@@ -1396,16 +1530,190 @@ app.get('/teacher/violations', verifyToken, async (req, res) => {
 });
 
 // 13. Admin: Get global exam policies
-app.get('/admin/policies', async (req, res) => {
+// --- SUPER ADMIN USER MANAGEMENT ---
+
+// Delete a user entirely (Auth + Firestore)
+app.delete('/admin/users/:uid', verifyToken, async (req, res) => {
   try {
-    let defaultDuration = mockConfig.defaultDuration;
-    let warningThreshold = mockConfig.warningThreshold;
-    if (db) {
-      const configDoc = await db.collection('settings').doc('config').get();
-      if (configDoc.exists) {
-        defaultDuration = configDoc.data().defaultDuration || 45;
-        warningThreshold = configDoc.data().warningThreshold || 3;
+    if (!isAdminOrTeacher(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
+    const { uid } = req.params;
+
+    // Delete from Firebase Auth (if exists)
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (authErr) {
+      if (authErr.code === 'auth/user-not-found') {
+        console.log(`User ${uid} not found in Firebase Auth, proceeding to delete from Firestore.`);
+      } else {
+        throw authErr; // rethrow if it's a different auth error
       }
+    }
+    
+    // Delete from Firestore
+    await db.collection('users').doc(uid).delete();
+
+    res.json({ success: true, message: 'User deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user.' });
+  }
+});
+
+// Update a user's profile (Firestore)
+app.put('/admin/users/:uid', verifyToken, async (req, res) => {
+  try {
+    if (!isAdminOrTeacher(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
+    const { uid } = req.params;
+    const { name, department, role, email, semester, phoneNumber, prnNumber } = req.body;
+
+    const userRef = db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found in Firestore.' });
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (department !== undefined) updates.department = department;
+    if (role !== undefined) updates.role = role;
+    if (email !== undefined) updates.email = email;
+    if (semester !== undefined) updates.semester = semester;
+    if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
+    if (prnNumber !== undefined) updates.prnNumber = prnNumber ? prnNumber.toUpperCase() : 'N/A';
+
+    await userRef.update(updates);
+
+    // Also sync name/email to Firebase Auth record
+    const authUpdates = {};
+    if (name) authUpdates.displayName = name;
+    if (email) authUpdates.email = email;
+    if (Object.keys(authUpdates).length > 0) {
+      try {
+        await admin.auth().updateUser(uid, authUpdates);
+      } catch (authErr) {
+        console.warn(`Could not update Firebase Auth for ${uid}:`, authErr.message);
+      }
+    }
+
+    res.json({ success: true, message: 'User updated successfully.' });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user.' });
+  }
+});
+
+// Create a new user with Firebase Auth + Firestore profile
+app.post('/admin/create-user', verifyToken, async (req, res) => {
+  try {
+    if (!isAdminOrTeacher(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
+    const { name, email, password, department, role, semester, phoneNumber, prnNumber } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    // Create Firebase Auth account
+    const authUser = await admin.auth().createUser({
+      email,
+      password,
+      displayName: name,
+      emailVerified: false
+    });
+
+    const uid = authUser.uid;
+
+    // Write Firestore profile
+    const userProfile = {
+      uid,
+      name,
+      email,
+      role: role === 'student' ? 'student' : 'teacher',
+      department: department || 'Unassigned',
+      semester: semester || 'N/A',
+      prnNumber: (prnNumber || 'N/A').toUpperCase(),
+      phoneNumber: phoneNumber || '',
+      collegeDomain: email.substring(email.lastIndexOf('@') + 1),
+      createdAt: new Date().toISOString()
+    };
+
+    await db.collection('users').doc(uid).set(userProfile);
+
+    console.log(`[Admin] Created new ${userProfile.role} account: ${email} (uid: ${uid})`);
+    res.json({ success: true, uid, message: `${userProfile.role} account created successfully.` });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    if (error.code === 'auth/email-already-exists') {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
+    res.status(500).json({ error: error.message || 'Failed to create user.' });
+  }
+});
+
+// Send password reset email OR force-set a new password for a user
+app.post('/admin/users/:uid/reset-password', verifyToken, async (req, res) => {
+  try {
+    if (!isAdminOrTeacher(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
+    const { uid } = req.params;
+    const { mode, newPassword } = req.body; // mode: 'email' | 'force'
+
+    // Fetch the user's email from Firestore (more reliable than Auth for display)
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const { email } = userDoc.data();
+
+    if (mode === 'force') {
+      // Admin sets a new password directly
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+      }
+      await admin.auth().updateUser(uid, { password: newPassword });
+      console.log(`[Admin] Force-reset password for uid: ${uid}`);
+      return res.json({ success: true, message: `Password updated successfully for ${email}.` });
+    } else {
+      // Send a password reset link via Firebase Auth email
+      const resetLink = await admin.auth().generatePasswordResetLink(email);
+      // In production you'd send this via email. For now we return it so admin can share it.
+      console.log(`[Admin] Password reset link generated for ${email}: ${resetLink}`);
+      return res.json({
+        success: true,
+        message: `Password reset link generated for ${email}.`,
+        resetLink // Admin can copy and share this with the user
+      });
+    }
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset password.' });
+  }
+});
+
+// --- GLOBAL POLICIES ---
+
+app.get('/admin/policies', verifyToken, async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+    let defaultDuration = 45;
+    let warningThreshold = 3;
+    const configDoc = await db.collection('settings').doc('config').get();
+    if (configDoc.exists) {
+      defaultDuration = configDoc.data().defaultDuration || 45;
+      warningThreshold = configDoc.data().warningThreshold || 3;
     }
     res.json({ defaultDuration, warningThreshold });
   } catch (error) {
@@ -1415,8 +1723,7 @@ app.get('/admin/policies', async (req, res) => {
 
 // 14. Admin: Save global exam policies
 app.post('/admin/policies', verifyToken, async (req, res) => {
-  // F4 Fix: Ensure user has teacher/admin role
-  if (req.user.role !== 'teacher' && !req.user.uid.startsWith('mock-uid-teacher')) {
+  if (!isAdminOrTeacher(req.user)) {
     return res.status(403).json({ error: 'Forbidden: Only teachers/admins can update exam policies.' });
   }
   const { defaultDuration, warningThreshold } = req.body;
@@ -1424,17 +1731,13 @@ app.post('/admin/policies', verifyToken, async (req, res) => {
     return res.status(400).json({ error: 'Duration and threshold are required.' });
   }
   try {
-    mockConfig.defaultDuration = parseInt(defaultDuration);
-    mockConfig.warningThreshold = parseInt(warningThreshold);
-
-    if (db) {
-      await db.collection('settings').doc('config').set({
-        defaultDuration: parseInt(defaultDuration),
-        warningThreshold: parseInt(warningThreshold),
-        updatedAt: new Date().toISOString()
-      });
-    }
-    res.json({ message: 'Exam policies updated successfully', mockConfig });
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+    await db.collection('settings').doc('config').set({
+      defaultDuration: parseInt(defaultDuration),
+      warningThreshold: parseInt(warningThreshold),
+      updatedAt: new Date().toISOString()
+    });
+    res.json({ message: 'Exam policies updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

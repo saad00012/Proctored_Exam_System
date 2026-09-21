@@ -14,12 +14,7 @@ import edu.dnyanshree.exam.ui.exam.ExamScreen
 
 @Composable
 fun MainNavigation() {
-    // Disable login system for development phase
-    var isAuthenticated by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        isAuthenticated = true
-    }
+    var isAuthenticated by remember { mutableStateOf(com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) }
 
     if (!isAuthenticated) {
         AuthScreen(onAuthSuccess = { isAuthenticated = true })
@@ -37,11 +32,8 @@ fun MainNavigation() {
                         onLogout = {
                             try {
                                 com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
-                            } catch (e: Exception) {
-                                // Mock signout
-                            }
-                            // Keep authenticated as true during development phase
-                            isAuthenticated = true
+                            } catch (e: Exception) {}
+                            isAuthenticated = false
                         },
                         modifier = Modifier
                             .safeDrawingPadding()
@@ -52,8 +44,15 @@ fun MainNavigation() {
                     ExamScreen(
                         paperId = examKey.paperId,
                         onExamFinished = {
-                            // Back to main list
+                            // Back to main list after normal exam completion
                             backStack.removeLastOrNull()
+                        },
+                        onViolationSignOut = {
+                            // Violation: sign out and go to login screen
+                            try {
+                                com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                            } catch (e: Exception) {}
+                            isAuthenticated = false
                         },
                         modifier = Modifier
                             .safeDrawingPadding()

@@ -1,30 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, query, getDocs, where } from 'firebase/firestore';
-import { db, auth, isMock } from './firebase';
+import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './components/Login';
 import PaperUpload from './components/PaperUpload';
 import LiveMonitor from './components/LiveMonitor';
 import StudentDirectory from './components/StudentDirectory';
+import UserManagement from './components/UserManagement';
 import API_BASE_URL from './config';
 
 function App() {
-  const [user, setUser] = useState({
-    uid: 'mock-uid-teacher-456',
-    email: 'teacher@dnyanshree.edu.in',
-    name: 'Mock Teacher (Dev)',
-    role: 'teacher',
-    token: 'mock-teacher'
-  });
+  const [user, setUser] = useState(null);
   const [role, setRole] = useState('teacher'); // 'superadmin' or 'teacher'
-  const [teachers, setTeachers] = useState([
-    { uid: 'mock-uid-teacher-456', name: 'Mock Teacher (Dev)', email: 'teacher@dnyanshree.edu.in', department: 'Computer Science' },
-    { uid: 'mock-uid-teacher-789', name: 'Dr. Neha Gupta', email: 'neha.gupta@dnyanshree.edu.in', department: 'Data Structures' },
-    { uid: 'mock-uid-teacher-101', name: 'Prof. Suresh Patil', email: 'suresh.patil@dnyanshree.edu.in', department: 'Electrical Engineering' }
-  ]);
-  const [newTeacherName, setNewTeacherName] = useState('');
-  const [newTeacherEmail, setNewTeacherEmail] = useState('');
-  const [newTeacherDepartment, setNewTeacherDepartment] = useState('Computer Science');
+  const [teachers, setTeachers] = useState([]);
+  const [students, setStudents] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [allowedDomains, setAllowedDomains] = useState(['dnyanshree.edu.in']);
   const [newDomain, setNewDomain] = useState('');
@@ -36,26 +25,78 @@ function App() {
   const [attempts, setAttempts] = useState([]);
   const [papersCount, setPapersCount] = useState(0);
 
-  // Restore login session on app load (disabled for development phase)
-  useEffect(() => {
-    console.log("🛠️ Dev Mode: Login system disabled, using mock teacher session.");
-    if (auth) {
-      signOut(auth).catch(() => {});
+  // Helper to get fresh auth token
+  const getAuthToken = async () => {
+    try {
+      if (auth && auth.currentUser) {
+        return await auth.currentUser.getIdToken(true);
+      }
+    } catch (e) {
+      console.warn("Could not get fresh token:", e);
     }
-    setUser({
-      uid: 'mock-uid-teacher-456',
-      email: 'teacher@dnyanshree.edu.in',
-      name: 'Mock Teacher (Dev)',
-      role: 'teacher',
-      token: 'mock-teacher'
-    });
+    return user?.token || '';
+  };
+
+  // Restore login session on app load via Firebase Auth
+  useEffect(() => {
+    if (auth) {
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+          const token = await firebaseUser.getIdToken();
+          let userRole = 'teacher';
+          let userName = firebaseUser.displayName || 'Teacher';
+          
+          try {
+            if (db) {
+              const userDocRef = doc(db, 'users', firebaseUser.uid);
+              const userDocSnap = await getDoc(userDocRef);
+              if (userDocSnap.exists()) {
+                const data = userDocSnap.data();
+                userRole = data.role || 'teacher';
+                userName = data.name || userName;
+                if (userRole === 'student') {
+                  await signOut(auth);
+                  setUser(null);
+                  alert("Access Denied: Student accounts cannot access the Teacher Dashboard. Please use the mobile app.");
+                  return;
+                }
+              } else {
+                // Auto-create teacher document if not found in Firestore
+                await setDoc(userDocRef, {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  name: userName,
+                  role: 'teacher',
+                  createdAt: new Date().toISOString()
+                }, { merge: true });
+              }
+            }
+          } catch (e) {
+            console.warn("Could not sync Firestore profile in onAuthStateChanged:", e);
+          }
+
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: userName,
+            role: userRole,
+            token: token
+          });
+        } else {
+          setUser(null);
+        }
+      });
+      return () => unsubscribe();
+    }
   }, []);
 
   // Load global exam policies
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/admin/policies`);
+        const token = await getAuthToken();
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const response = await fetch(`${API_BASE_URL}/admin/policies`, { headers });
         if (response.ok) {
           const data = await response.json();
           setDefaultDuration(data.defaultDuration || 45);
@@ -68,13 +109,13 @@ function App() {
     loadConfig();
   }, [user]);
 
-  // Sync teachers from Firestore in live mode
+  // Sync teachers and students from Firestore in live mode
   useEffect(() => {
-    if (isMock || !db || !user) return;
+    if (!db || !user) return;
 
-    console.log("👥 Syncing teachers from Firestore...");
-    const q = query(collection(db, 'users'), where('role', '==', 'teacher'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    console.log("👥 Syncing users from Firestore...");
+    const qTeachers = query(collection(db, 'users'), where('role', '==', 'teacher'));
+    const unsubTeachers = onSnapshot(qTeachers, (snapshot) => {
       const list = [];
       snapshot.forEach((doc) => {
         list.push({ uid: doc.id, ...doc.data() });
@@ -84,97 +125,44 @@ function App() {
       console.error("Error syncing teachers in App.jsx:", error);
     });
 
-    return () => unsubscribe();
+    const qStudents = query(collection(db, 'users'), where('role', '==', 'student'));
+    const unsubStudents = onSnapshot(qStudents, (snapshot) => {
+      const list = [];
+      snapshot.forEach((doc) => {
+        list.push({ uid: doc.id, ...doc.data() });
+      });
+      setStudents(list);
+    }, (error) => {
+      console.error("Error syncing students in App.jsx:", error);
+    });
+
+    return () => {
+      unsubTeachers();
+      unsubStudents();
+    };
   }, [user]);
 
-  const handleCreateTeacher = async (e) => {
-    e.preventDefault();
-    if (!newTeacherName || !newTeacherEmail) {
-      alert("Please fill all details.");
-      return;
-    }
-    setPolicyLoading(true);
-    const teacherData = {
-      name: newTeacherName,
-      email: newTeacherEmail,
-      department: newTeacherDepartment,
-      role: 'teacher'
-    };
-
-    if (isMock) {
-      const newTeacher = {
-        uid: `mock-uid-teacher-${Date.now()}`,
-        ...teacherData
-      };
-      setTeachers([...teachers, newTeacher]);
-      setNewTeacherName('');
-      setNewTeacherEmail('');
-      alert(`Teacher account for ${newTeacherName} created successfully (Mock mode)!`);
-      setPolicyLoading(false);
-    } else {
-      try {
-        const docRef = doc(collection(db, 'users'));
-        await setDoc(docRef, teacherData);
-        setNewTeacherName('');
-        setNewTeacherEmail('');
-        alert(`Teacher account for ${newTeacherName} registered in database!`);
-      } catch (err) {
-        console.error("Failed to create teacher:", err);
-        alert("Failed to create teacher: " + err.message);
-      } finally {
-        setPolicyLoading(false);
-      }
-    }
-  };
-
-  const handleDeleteTeacher = async (uid) => {
-    if (!window.confirm("Are you sure you want to delete this teacher account?")) return;
-    setPolicyLoading(true);
-    if (isMock) {
-      setTeachers(teachers.filter(t => t.uid !== uid));
-      alert("Teacher account deleted successfully.");
-      setPolicyLoading(false);
-    } else {
-      try {
-        await deleteDoc(doc(db, 'users', uid));
-        alert("Teacher account deleted successfully.");
-      } catch (err) {
-        console.error("Failed to delete teacher:", err);
-        alert("Failed to delete teacher: " + err.message);
-      } finally {
-        setPolicyLoading(false);
-      }
-    }
-  };
 
   const handleSavePolicies = async (e) => {
     e.preventDefault();
     setPolicyLoading(true);
-    if (isMock) {
-      alert("General exam policies saved successfully! (Mock Mode)");
-      setPolicyLoading(false);
-      return;
-    }
     try {
+      const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/admin/policies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.token || 'mock-teacher'}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           defaultDuration: parseInt(defaultDuration),
           warningThreshold: parseInt(warningThreshold)
         })
       });
-      if (response.ok) {
-        alert("General exam policies updated successfully!");
-      } else {
-        const errData = await response.json();
-        alert("Failed to save policies: " + errData.error);
-      }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      alert(data.message || "Exam policies updated successfully!");
     } catch (err) {
-      console.error("Failed to save config:", err);
       alert("Failed to save policies: " + err.message);
     } finally {
       setPolicyLoading(false);
@@ -184,22 +172,6 @@ function App() {
   const handleSeedSampleData = async () => {
     if (!window.confirm("Seed sample papers and MCQs in Firestore?")) return;
     setPolicyLoading(true);
-    if (isMock) {
-      // L2 fix: Call backend /papers to trigger auto-seed instead of being a no-op
-      try {
-        const response = await fetch(`${API_BASE_URL}/papers`);
-        if (response.ok) {
-          alert("Sample papers seeded via backend successfully (Mock Mode).");
-        } else {
-          alert("Backend seed failed. Is the server running?");
-        }
-      } catch (err) {
-        alert("Could not reach backend to seed: " + err.message);
-      }
-      setPolicyLoading(false);
-      return;
-    }
-
     try {
       const paper1Id = "cse-set-a";
       await setDoc(doc(db, "papers", paper1Id), {
@@ -293,12 +265,6 @@ function App() {
   const handleClearAttempts = async () => {
     if (!window.confirm("Are you sure you want to delete ALL student attempt logs? This resets all blocks, submissions, and warnings.")) return;
     setPolicyLoading(true);
-    if (isMock) {
-      alert("Attempts cleared successfully (Mock Mode).");
-      setPolicyLoading(false);
-      return;
-    }
-
     try {
       const q = query(collection(db, "exam_attempts"));
       const snapshot = await getDocs(q);
@@ -318,7 +284,7 @@ function App() {
 
   // Sync attempts and papers count for Overview metrics in real-time
   useEffect(() => {
-    if (isMock || !db || !user) {
+    if (!db || !user) {
       setPapersCount(3);
       
       const poll = async () => {
@@ -433,12 +399,19 @@ function App() {
   };
 
   const handleLogout = async () => {
-    alert("Logout is disabled during the development phase.");
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await signOut(auth);
+        setUser(null);
+      } catch (err) {
+        console.error("Logout failed:", err);
+      }
+    }
   };
 
   // Sync whitelisted domains in real-time if live Firebase is active
   useEffect(() => {
-    if (isMock || !db || !user) return;
+    if (!db || !user) return;
 
     console.log("🔗 Listening to allowed_domains in Firestore...");
     const unsubscribe = onSnapshot(collection(db, 'allowed_domains'), (snapshot) => {
@@ -476,28 +449,19 @@ function App() {
 
     setSettingsLoading(true);
 
-    if (isMock) {
-      // Mock flow
-      setTimeout(() => {
-        setAllowedDomains([...allowedDomains, formattedDomain]);
-        setNewDomain('');
-        setSettingsLoading(false);
-      }, 500);
-    } else {
-      // Write directly to Firestore
-      try {
-        setSettingsLoading(true);
-        await setDoc(doc(db, 'allowed_domains', formattedDomain), {
-          isActive: true,
-          createdAt: new Date().toISOString()
-        });
-        setNewDomain('');
-      } catch (err) {
-        console.error("Failed to add domain to Firestore:", err);
-        alert("Failed to write to database: " + err.message);
-      } finally {
-        setSettingsLoading(false);
-      }
+    // Write directly to Firestore
+    try {
+      setSettingsLoading(true);
+      await setDoc(doc(db, 'allowed_domains', formattedDomain), {
+        isActive: true,
+        createdAt: new Date().toISOString()
+      });
+      setNewDomain('');
+    } catch (err) {
+      console.error("Failed to add domain to Firestore:", err);
+      alert("Failed to write to database: " + err.message);
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -513,22 +477,14 @@ function App() {
 
     setSettingsLoading(true);
 
-    if (isMock) {
-      // Mock flow
-      setTimeout(() => {
-        setAllowedDomains(allowedDomains.filter(d => d !== domain));
-        setSettingsLoading(false);
-      }, 500);
-    } else {
-      // Delete from Firestore
-      try {
-        await deleteDoc(doc(db, 'allowed_domains', domain));
-      } catch (err) {
-        console.error("Failed to delete domain from Firestore:", err);
-        alert("Failed to delete from database: " + err.message);
-      } finally {
-        setSettingsLoading(false);
-      }
+    // Delete from Firestore
+    try {
+      await deleteDoc(doc(db, 'allowed_domains', domain));
+    } catch (err) {
+      console.error("Failed to delete domain from Firestore:", err);
+      alert("Failed to delete from database: " + err.message);
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -625,8 +581,8 @@ function App() {
                 </div>
                 <div className="flex-between" style={{ padding: '0.4rem 0', borderBottom: '1px solid var(--border-color)' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Firestore Connection</span>
-                  <span className={isMock ? "badge badge-warning" : "badge badge-success"}>
-                    {isMock ? "Mock (Offline)" : "Connected"}
+                  <span className="badge badge-success">
+                    Connected
                   </span>
                 </div>
                 <div className="flex-between" style={{ padding: '0.4rem 0' }}>
@@ -766,99 +722,8 @@ function App() {
             </div>
           </div>
         );
-      case 'teachers':
-        return (
-          <div>
-            <h2 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '1.5rem' }}>Teacher Management</h2>
-            
-            <div className="grid-cols-1-2" style={{ alignItems: 'flex-start', gap: '2rem' }}>
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                  Register Teacher Account
-                </h3>
-                <form onSubmit={handleCreateTeacher} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
-                      Teacher Full Name
-                    </label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="e.g. Prof. Ramesh Deshmukh"
-                      value={newTeacherName}
-                      onChange={(e) => setNewTeacherName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
-                      Teacher Email
-                    </label>
-                    <input
-                      type="email"
-                      className="input-field"
-                      placeholder="e.g. ramesh@dnyanshree.edu.in"
-                      value={newTeacherEmail}
-                      onChange={(e) => setNewTeacherEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
-                      Primary Department
-                    </label>
-                    <select
-                      className="input-field"
-                      value={newTeacherDepartment}
-                      onChange={(e) => setNewTeacherDepartment(e.target.value)}
-                    >
-                      <option value="Computer Science">Computer Science</option>
-                      <option value="Mechanical Engineering">Mechanical Engineering</option>
-                      <option value="Civil Engineering">Civil Engineering</option>
-                      <option value="Electrical Engineering">Electrical Engineering</option>
-                    </select>
-                  </div>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'fit-content', marginTop: '0.5rem' }}>
-                    ➕ Create Account
-                  </button>
-                </form>
-              </div>
-
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                  Active Faculty Directory ({teachers.length})
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {teachers.map(t => (
-                    <div key={t.uid} className="flex-between" style={{
-                      padding: '1rem',
-                      background: 'rgba(0, 0, 0, 0.15)',
-                      borderRadius: '10px',
-                      border: '1px solid var(--border-color)'
-                    }}>
-                      <div>
-                        <h4 style={{ fontSize: '1rem', fontWeight: 600 }}>{t.name}</h4>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.email}</p>
-                        <span className="badge badge-info" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
-                          {t.department}
-                        </span>
-                      </div>
-                      {t.uid !== 'mock-uid-teacher-456' && (
-                        <button
-                          className="btn btn-danger"
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
-                          onClick={() => handleDeleteTeacher(t.uid)}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
+      case 'users':
+        return <UserManagement user={user} />;
       case 'policies':
         return (
           <div>
@@ -945,6 +810,10 @@ function App() {
     }
   };
 
+  if (!user) {
+    return <Login onLoginSuccess={(u) => setUser(u)} />;
+  }
+
   return (
     <div className="app-container">
       {/* Sidebar */}
@@ -954,7 +823,7 @@ function App() {
           <div className="sidebar-logo-icon">🛡️</div>
           <div>
             <div className="sidebar-logo-text">DIET Proctor</div>
-            <div className="sidebar-logo-sub">{isMock ? 'Mock Mode' : 'Live Mode'}</div>
+            <div className="sidebar-logo-sub">Live Mode</div>
           </div>
         </div>
 
@@ -1001,10 +870,10 @@ function App() {
               </div>
 
               <div
-                className={`sidebar-link ${activeTab === 'teachers' ? 'active' : ''}`}
-                onClick={() => setActiveTab('teachers')}
+                className={`sidebar-link ${activeTab === 'users' ? 'active' : ''}`}
+                onClick={() => setActiveTab('users')}
               >
-                <span className="sidebar-icon">👥</span> Faculty Directory
+                <span className="sidebar-icon">👥</span> User Management
               </div>
 
               <div

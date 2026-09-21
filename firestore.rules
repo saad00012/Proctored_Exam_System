@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper to get user document
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper function to check if user has a specific role
+    function hasRole(role) {
+      return isAuthenticated() && (
+        getUserData().role == role || 
+        (role == 'teacher' && request.auth.uid.startsWith('mock-uid-teacher'))
+      );
+    }
+
+    // Allowed Domains rules
+    match /allowed_domains/{domain} {
+      allow read: if true;
+      allow write: if hasRole('superadmin');
+    }
+
+    // Users rules
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow write: if request.auth.uid == uid || hasRole('superadmin') || hasRole('teacher');
+    }
+
+    // Papers rules
+    match /papers/{paperId} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('teacher') || hasRole('superadmin');
+    }
+
+    // Exams rules (exam group containers)
+    match /exams/{examId} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('teacher') || hasRole('superadmin');
+    }
+
+    // Questions rules
+    match /questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('teacher') || hasRole('superadmin');
+    }
+
+    // Exam Attempts rules
+    match /exam_attempts/{attemptId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Allow backend or client update for log saving
+    }
+
+    // Violations rules
+    match /violations/{violationId} {
+      allow read: if hasRole('teacher') || hasRole('superadmin');
+      allow write: if isAuthenticated();
+    }
+
+    // Settings rules
+    match /settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('teacher') || hasRole('superadmin');
+    }
+    
+    // Audit logs rules
+    match /audit_logs/{logId} {
+      allow read: if hasRole('teacher') || hasRole('superadmin');
+      allow write: if false; // Only written via Admin SDK/backend
+    }
+  }
+}

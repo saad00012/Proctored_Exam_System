@@ -19,7 +19,6 @@ let app = null;
 let auth = null;
 let db = null;
 let storage = null;
-let isMock = true;
 
 // Detect if configs are default placeholders
 const hasValidConfig = 
@@ -34,14 +33,13 @@ if (hasValidConfig) {
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
-    isMock = false;
     console.log("✅ Firebase Web SDK initialized successfully.");
   } catch (error) {
     console.error("❌ Failed to initialize Firebase Web SDK:", error.message);
   }
 } else {
-  console.warn("⚠️ Firebase configurations not detected. Running Web Dashboard in Mock Mode.");
+  console.error("❌ Firebase configurations not detected or invalid! The app will not work.");
 }
 
-export { auth, db, storage, isMock };
+export { auth, db, storage };
 export default app;

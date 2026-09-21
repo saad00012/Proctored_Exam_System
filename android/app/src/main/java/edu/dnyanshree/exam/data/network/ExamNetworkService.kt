@@ -17,8 +17,8 @@ class ExamNetworkService(
             val url = URL("$baseUrl$endpoint")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = method
-            conn.connectTimeout = 2500
-            conn.readTimeout = 2500
+            conn.connectTimeout = 60000
+            conn.readTimeout = 60000
             conn.doInput = true
             conn.setRequestProperty("Content-Type", "application/json")
             if (authToken != null) {

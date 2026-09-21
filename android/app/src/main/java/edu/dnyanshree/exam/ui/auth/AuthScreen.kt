@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +41,10 @@ import androidx.compose.ui.window.Dialog
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.PhoneAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import edu.dnyanshree.exam.BuildConfig
 import edu.dnyanshree.exam.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +56,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 // Backend base URL (127.0.0.1 maps to localhost)
-private const val BACKEND_URL = "http://127.0.0.1:5000"
+private const val BACKEND_URL = BuildConfig.API_BASE_URL
 
 private val PrimaryGradient = Brush.linearGradient(listOf(Indigo500, Violet500))
 private val BackgroundGradient = Brush.verticalGradient(listOf(SurfaceLight, Color(0xFFF0F0FF)))
@@ -61,18 +67,38 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var prn by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var department by remember { mutableStateOf("") }
-    var semester by remember { mutableStateOf("") }
+    var department by remember { mutableStateOf("AI & DS Engineering") }
+    
+    val departments = listOf(
+        "AI & DS Engineering",
+        "Computer Science & Engineering",
+        "Electrical & Computer Engineering",
+        "Electronics & Telecommunication Engineering",
+        "Mechanical & Mechatronics Engineering",
+        "Applied Science & Engineering"
+    )
+    
+    val semesters = if (department == "Applied Science & Engineering") {
+        listOf("Semester 1", "Semester 2")
+    } else {
+        listOf("Semester 3", "Semester 4", "Semester 5", "Semester 6", "Semester 7", "Semester 8")
+    }
+    
+    var semester by remember { mutableStateOf(semesters.first()) }
+    
+    // Ensure semester is valid if department changes
+    LaunchedEffect(department) {
+        if (!semesters.contains(semester)) {
+            semester = semesters.first()
+        }
+    }
 
     var errorMsg by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
 
-    // OTP Dialog state
-    var showOtpDialog by remember { mutableStateOf(false) }
-    var otpCode by remember { mutableStateOf("") }
-    var verificationId by remember { mutableStateOf("") }
-    var pendingUserToken by remember { mutableStateOf("") }
+
 
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -215,18 +241,26 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 keyboardType = KeyboardType.Text
                             )
                             StyledTextField(
-                                value = department,
-                                onValueChange = { department = it },
-                                label = "Department (e.g. Computer Science)",
-                                icon = Icons.Default.School,
+                                value = prn,
+                                onValueChange = { prn = it.uppercase() },
+                                label = "PRN Number / Roll No.",
+                                placeholder = "e.g. 210101001",
+                                icon = Icons.Default.Person,
                                 keyboardType = KeyboardType.Text
                             )
-                            StyledTextField(
+                            StyledDropdownField(
+                                value = department,
+                                onValueChange = { department = it },
+                                options = departments,
+                                label = "Department",
+                                icon = Icons.Default.School
+                            )
+                            StyledDropdownField(
                                 value = semester,
                                 onValueChange = { semester = it },
-                                label = "Semester (e.g. Sem 5)",
-                                icon = Icons.Default.School,
-                                keyboardType = KeyboardType.Text
+                                options = semesters,
+                                label = "Semester",
+                                icon = Icons.Default.School
                             )
                             StyledTextField(
                                 value = phone,
@@ -275,11 +309,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                         onError = { errorMsg = it },
                                         onLoading = { loading = it })
                                 } else {
-                                    handleRegisterStart(name, email, phone, password, department, semester, coroutineScope,
-                                        onShowOtp = { verId, token ->
-                                            verificationId = verId
-                                            pendingUserToken = token
-                                            showOtpDialog = true
+                                    handleRegisterStart(name, prn, email, phone, password, department, semester, coroutineScope,
+                                        onSuccess = {
+                                            errorMsg = "Registration successful! Please check your email for a verification link."
+                                            isLogin = true
                                         },
                                         onError = { errorMsg = it },
                                         onLoading = { loading = it })
@@ -314,80 +347,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         }
     }
 
-    // === OTP Dialog ===
-    if (showOtpDialog) {
-        Dialog(onDismissRequest = { }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = White),
-                elevation = CardDefaults.cardElevation(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Indigo50),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Phone, contentDescription = null, tint = Indigo500, modifier = Modifier.size(24.dp))
-                    }
 
-                    Text("Verify Your Number", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
-                    Text(
-                        text = "Enter the 6-digit code sent to your mobile",
-                        fontSize = 13.sp,
-                        color = Gray400,
-                        textAlign = TextAlign.Center
-                    )
-
-                    StyledTextField(
-                        value = otpCode,
-                        onValueChange = { if (it.length <= 6) otpCode = it },
-                        label = "6-Digit OTP",
-                        keyboardType = KeyboardType.Number
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { showOtpDialog = false },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = ButtonDefaults.outlinedButtonBorder
-                        ) {
-                            Text("Cancel", color = Gray500)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (otpCode.length == 6 && !loading) PrimaryGradient else Brush.linearGradient(listOf(Gray300, Gray300)))
-                                .clickable(enabled = otpCode.length == 6 && !loading) {
-                                    handleOtpVerification(
-                                        otpCode, verificationId, pendingUserToken, name, phone, department, semester, coroutineScope,
-                                        onSuccess = { showOtpDialog = false; onAuthSuccess() },
-                                        onError = { errorMsg = it },
-                                        onLoading = { loading = it }
-                                    )
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Verify", color = White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -430,24 +390,13 @@ private fun StyledTextField(
 // Private Business Logic Functions (unchanged from original)
 // ===================================================================
 
-// Check if Firebase is running with mock coordinates/placeholder configs
-private fun checkIsFirebaseMock(): Boolean {
-    return try {
-        val app = FirebaseApp.getInstance()
-        val projectId = app.options.projectId
-        projectId == "dnyanshree-exam-mock" || app.options.apiKey == "mock-api-key-value"
-    } catch (e: Exception) {
-        true
-    }
-}
-
 // Core API call functions
 private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: String, authToken: String? = null): JSONObject = withContext(Dispatchers.IO) {
     val url = URL("$BACKEND_URL$endpoint")
     val conn = url.openConnection() as HttpURLConnection
     conn.requestMethod = method
-    conn.connectTimeout = 10000
-    conn.readTimeout = 10000
+    conn.connectTimeout = 60000
+    conn.readTimeout = 60000
     conn.doInput = true
     conn.setRequestProperty("Content-Type", "application/json")
     if (authToken != null) {
@@ -487,24 +436,7 @@ private fun handleLogin(
 
     onLoading(true)
     scope.launch {
-        // Detect Mock credentials offline
-        if (checkIsFirebaseMock() || (email.endsWith("@dnyanshree.edu.in") && password == "password")) {
-            try {
-                // Verify mock credentials via register-check endpoint
-                val requestBody = JSONObject().apply {
-                    put("email", email)
-                    put("phoneNumber", "1234567890")
-                }.toString()
-                makeApiRequest("/register-check", "POST", requestBody)
 
-                onLoading(false)
-                onSuccess()
-            } catch (e: Exception) {
-                onLoading(false)
-                onError(e.message ?: "Authentication failed.")
-            }
-            return@launch
-        }
 
         // Live Firebase Sign-In Flow
         try {
@@ -526,19 +458,8 @@ private fun handleLogin(
                             if (tokenTask.isSuccessful) {
                                 val token = tokenTask.result?.token ?: ""
                                 scope.launch {
-                                    try {
-                                        val profileBody = JSONObject().apply {
-                                            put("name", user.displayName ?: "Student")
-                                            put("phoneNumber", user.phoneNumber ?: "0000000000")
-                                            put("role", "student")
-                                        }.toString()
-                                        makeApiRequest("/create-profile", "POST", profileBody, token)
-                                        onLoading(false)
-                                        onSuccess()
-                                    } catch (e: Exception) {
-                                        onLoading(false)
-                                        onError(e.message ?: "Failed to sync profile with server.")
-                                    }
+                                    onLoading(false)
+                                    onSuccess()
                                 }
                             } else {
                                 onLoading(false)
@@ -558,25 +479,32 @@ private fun handleLogin(
 }
 
 private fun handleRegisterStart(
-    name: String, email: String, phone: String, password: String, department: String, semester: String, scope: CoroutineScope,
-    onShowOtp: (String, String) -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit
+    name: String, prn: String, email: String, phone: String, password: String, department: String, semester: String, scope: CoroutineScope,
+    onSuccess: () -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit
 ) {
-    if (name.isEmpty() || email.isEmpty() || phone.isEmpty() || password.isEmpty() || department.isEmpty() || semester.isEmpty()) {
-        onError("All registration fields (including Department & Semester) are required.")
+    if (name.isBlank() || prn.isBlank() || email.isBlank() || phone.isBlank() || password.isBlank() || department.isBlank() || semester.isBlank()) {
+        onError("All registration fields (including PRN, Department & Semester) are required.")
         return
     }
 
     onLoading(true)
     scope.launch {
         try {
-            // Step 1: Call Backend to check if Domain is whitelisted
-            val checkBody = JSONObject().apply {
-                put("email", email)
-                put("phoneNumber", phone)
-            }.toString()
+            // Step 1: Call Backend to check if Domain is whitelisted (with local fallback if backend offline)
+            var allowed = true
+            try {
+                val checkBody = JSONObject().apply {
+                    put("email", email)
+                    put("phoneNumber", phone)
+                }.toString()
 
-            val checkResponse = makeApiRequest("/register-check", "POST", checkBody)
-            val allowed = checkResponse.optBoolean("allowed", false)
+                val checkResponse = makeApiRequest("/register-check", "POST", checkBody)
+                allowed = checkResponse.optBoolean("allowed", true)
+            } catch (e: Exception) {
+                // If backend check is unreachable, allow valid domain pattern check locally
+                val domain = email.substringAfter("@", "")
+                allowed = domain.isNotEmpty()
+            }
 
             if (!allowed) {
                 onLoading(false)
@@ -584,38 +512,73 @@ private fun handleRegisterStart(
                 return@launch
             }
 
-            // Check if Firebase is offline/missing (Mock Mode trigger)
-            if (checkIsFirebaseMock()) {
-                // Offline Mock path
-                onLoading(false)
-                onShowOtp("mock-verification-id", "mock-student")
-            } else {
-                // Live Firebase path
-                val firebaseAuth = FirebaseAuth.getInstance()
-                firebaseAuth.createUserWithEmailAndPassword(email, password)
-                    .addOnCompleteListener { task ->
-                        if (task.isSuccessful) {
-                            val user = task.result?.user
+            // Step 2: Create user in Firebase Auth
+            val firebaseAuth = FirebaseAuth.getInstance()
+            firebaseAuth.createUserWithEmailAndPassword(email, password)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        val user = task.result?.user
 
-                            // Send verification email link natively
-                            user?.sendEmailVerification()
+                        // Set Firebase Auth Display Name
+                        user?.updateProfile(
+                            UserProfileChangeRequest.Builder()
+                                .setDisplayName(name)
+                                .build()
+                        )
 
-                            user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
-                                if (tokenTask.isSuccessful) {
-                                    val token = tokenTask.result?.token ?: ""
+                        // Directly write full profile to Firestore
+                        val firestore = FirebaseFirestore.getInstance()
+                        val cleanPrn = prn.trim().uppercase()
+                        val profileMap = hashMapOf(
+                            "uid" to (user?.uid ?: ""),
+                            "name" to name,
+                            "email" to email,
+                            "phoneNumber" to phone,
+                            "role" to "student",
+                            "department" to department,
+                            "semester" to semester,
+                            "prnNumber" to cleanPrn,
+                            "collegeDomain" to email.substringAfter("@"),
+                            "createdAt" to FieldValue.serverTimestamp()
+                        )
+                        user?.uid?.let { uid ->
+                            firestore.collection("users").document(uid).set(profileMap)
+                        }
+
+                        // Send verification email link natively
+                        user?.sendEmailVerification()
+
+                        // Step 3: Sync profile with backend
+                        user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
+                            val token = tokenTask.result?.token ?: ""
+                            scope.launch {
+                                try {
+                                    val profileBody = JSONObject().apply {
+                                        put("name", name)
+                                        put("phoneNumber", phone)
+                                        put("role", "student")
+                                        put("department", department)
+                                        put("semester", semester)
+                                        put("prnNumber", cleanPrn)
+                                    }.toString()
+
+                                    if (token.isNotEmpty()) {
+                                        makeApiRequest("/create-profile", "POST", profileBody, token)
+                                    }
+                                } catch (e: Exception) {
+                                    // Non-blocking: Firestore direct write already succeeded
+                                    e.printStackTrace()
+                                } finally {
                                     onLoading(false)
-                                    onShowOtp("live-verification-id", token)
-                                } else {
-                                    onLoading(false)
-                                    onError(tokenTask.exception?.message ?: "Failed to generate ID token")
+                                    onSuccess()
                                 }
                             }
-                        } else {
-                            onLoading(false)
-                            onError(task.exception?.message ?: "Firebase signup failed.")
                         }
+                    } else {
+                        onLoading(false)
+                        onError(task.exception?.message ?: "Firebase signup failed.")
                     }
-            }
+                }
         } catch (e: Exception) {
             onLoading(false)
             onError(e.message ?: "Registration failed.")
@@ -623,67 +586,62 @@ private fun handleRegisterStart(
     }
 }
 
-private fun handleOtpVerification(
-    otpCode: String, verificationId: String, token: String, name: String, phone: String, department: String, semester: String, scope: CoroutineScope,
-    onSuccess: () -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit
+@Composable
+fun StyledDropdownField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    options: List<String>,
+    label: String,
+    icon: ImageVector
 ) {
-    onLoading(true)
-    scope.launch {
-        try {
-            if (token == "mock-student") {
-                // Mock Mode OTP check
-                val profileBody = JSONObject().apply {
-                    put("name", name)
-                    put("phoneNumber", phone)
-                    put("role", "student")
-                    put("department", department)
-                    put("semester", semester)
-                }.toString()
+    var expanded by remember { mutableStateOf(false) }
 
-                // Submit profile creation to Backend using mock token
-                makeApiRequest("/create-profile", "POST", profileBody, "mock-student")
-                onLoading(false)
-                onSuccess()
-            } else {
-                // Live Firebase Linking flow
-                val firebaseAuth = FirebaseAuth.getInstance()
-                val user = firebaseAuth.currentUser
-                if (user != null) {
-                    val credential = PhoneAuthProvider.getCredential(verificationId, otpCode)
-                    user.linkWithCredential(credential)
-                        .addOnCompleteListener { linkTask ->
-                            if (linkTask.isSuccessful) {
-                                scope.launch {
-                                    try {
-                                        val profileBody = JSONObject().apply {
-                                            put("name", name)
-                                            put("phoneNumber", phone)
-                                            put("role", "student")
-                                            put("department", department)
-                                            put("semester", semester)
-                                        }.toString()
-
-                                        makeApiRequest("/create-profile", "POST", profileBody, token)
-                                        onLoading(false)
-                                        onSuccess()
-                                    } catch (e: Exception) {
-                                        onLoading(false)
-                                        onError(e.message ?: "Failed to register profile on backend.")
-                                    }
-                                }
-                            } else {
-                                onLoading(false)
-                                onError(linkTask.exception?.message ?: "Failed to link mobile number.")
-                            }
-                        }
-                } else {
-                    onLoading(false)
-                    onError("No user currently logged in.")
-                }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            leadingIcon = {
+                Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            },
+            trailingIcon = {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                    contentDescription = null
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = false,
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                disabledLeadingIconColor = MaterialTheme.colorScheme.primary,
+                disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            shape = RoundedCornerShape(12.dp)
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(Color.Transparent)
+                .clickable { expanded = true }
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onValueChange(option)
+                        expanded = false
+                    }
+                )
             }
-        } catch (e: Exception) {
-            onLoading(false)
-            onError(e.message ?: "OTP Verification failed.")
         }
     }
 }

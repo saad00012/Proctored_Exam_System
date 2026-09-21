@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db, isMock } from '../firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import API_BASE_URL from '../config';
 
 function Login({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
+  const [department, setDepartment] = useState('AI & DS Engineering');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,46 +26,39 @@ function Login({ onLoginSuccess }) {
 
       setLoading(true);
 
-      if (isMock) {
-        setTimeout(() => {
-          setLoading(false);
-          if (email === 'admin@dnyanshree.edu.in' && password === 'admin123') {
-            console.log("✅ Logged in successfully (Mock Mode).");
-            const mockUser = {
-              uid: 'mock-uid-teacher-456',
-              email: 'admin@dnyanshree.edu.in',
-              name: 'Staff Coordinator',
-              token: 'mock-teacher'
-            };
-            localStorage.setItem('diet_proctor_user', JSON.stringify(mockUser));
-            onLoginSuccess(mockUser);
-          } else {
-            setError('Invalid credentials. Use admin@dnyanshree.edu.in / admin123 for Mock Mode.');
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        
+        // Prevent student accounts from entering teacher dashboard
+        if (db) {
+          const userDocSnap = await getDoc(doc(db, 'users', user.uid));
+          if (userDocSnap.exists() && userDocSnap.data().role === 'student') {
+            await signOut(auth);
+            setError('Access Denied: Student accounts cannot access the Teacher Dashboard. Please use the mobile app.');
+            setLoading(false);
+            return;
           }
-        }, 800);
-      } else {
-        try {
-          const userCredential = await signInWithEmailAndPassword(auth, email, password);
-          const user = userCredential.user;
-          const token = await user.getIdToken();
-          
-          console.log("✅ Logged in successfully with Firebase Auth.");
-          onLoginSuccess({
-            uid: user.uid,
-            email: user.email,
-            name: user.displayName || 'Teacher',
-            token: token
-          });
-        } catch (err) {
-          console.error("Sign-in error:", err);
-          setError(err.message || 'Authentication failed. Please check your credentials.');
-        } finally {
-          setLoading(false);
         }
+
+        const token = await user.getIdToken();
+        
+        console.log("✅ Logged in successfully with Firebase Auth.");
+        onLoginSuccess({
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || 'Teacher',
+          token: token
+        });
+      } catch (err) {
+        console.error("Sign-in error:", err);
+        setError(err.message || 'Authentication failed. Please check your credentials.');
+      } finally {
+        setLoading(false);
       }
     } else {
       // Registration Flow (Faculty Sign Up)
-      if (!name || !email || !password) {
+      if (!name || !email || !password || !department) {
         setError('All fields are required for registration.');
         return;
       }
@@ -71,55 +66,58 @@ function Login({ onLoginSuccess }) {
       const domain = email.substring(email.lastIndexOf("@") + 1).trim().toLowerCase();
       setLoading(true);
 
-      if (isMock) {
-        setTimeout(() => {
+      try {
+        // 1. Verify email domain matches allowed domains in Firestore
+        const domainDoc = await getDoc(doc(db, 'allowed_domains', domain));
+        if (!domainDoc.exists() || !domainDoc.data().isActive) {
+          setError(`Registration blocked: @${domain} is not a whitelisted college domain.`);
           setLoading(false);
-          if (domain === 'dnyanshree.edu.in') {
-            console.log("✅ Registered successfully (Mock Mode).");
-            const mockUser = {
-              uid: 'mock-uid-' + Date.now(),
-              email: email,
-              name: name,
-              token: 'mock-teacher'
-            };
-            localStorage.setItem('diet_proctor_user', JSON.stringify(mockUser));
-            onLoginSuccess(mockUser);
-          } else {
-            setError('Mock Mode only whitelists @dnyanshree.edu.in domain.');
-          }
-        }, 800);
-      } else {
-        try {
-          // 1. Verify email domain matches allowed domains in Firestore
-          const domainDoc = await getDoc(doc(db, 'allowed_domains', domain));
-          if (!domainDoc.exists() || !domainDoc.data().isActive) {
-            setError(`Registration blocked: @${domain} is not a whitelisted college domain.`);
-            setLoading(false);
-            return;
-          }
-
-          // 2. Create Firebase Auth user
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-          const user = userCredential.user;
-
-          // 3. Set display name profile
-          await updateProfile(user, { displayName: name });
-          
-          const token = await user.getIdToken();
-          console.log("✅ Faculty registered & logged in successfully with Firebase.");
-          
-          onLoginSuccess({
-            uid: user.uid,
-            email: user.email,
-            name: name,
-            token: token
-          });
-        } catch (err) {
-          console.error("Registration error:", err);
-          setError(err.message || 'Registration failed. Please check your details.');
-        } finally {
-          setLoading(false);
+          return;
         }
+
+        // 2. Create Firebase Auth user
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // 3. Set display name profile
+        await updateProfile(user, { displayName: name });
+        
+        const token = await user.getIdToken();
+
+        // 4. Create user profile via backend API to delegate role assignment and verification
+        const profileResponse = await fetch(`${API_BASE_URL}/create-profile`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            name: name,
+            phoneNumber: '0000000000',
+            role: 'teacher',
+            department: department,
+            semester: 'N/A'
+          })
+        });
+
+        if (!profileResponse.ok) {
+          const errData = await profileResponse.json();
+          throw new Error(errData.error || 'Failed to create user profile on backend.');
+        }
+
+        console.log("✅ Faculty registered & logged in successfully with Firebase.");
+        
+        onLoginSuccess({
+          uid: user.uid,
+          email: user.email,
+          name: name,
+          token: token
+        });
+      } catch (err) {
+        console.error("Registration error:", err);
+        setError(err.message || 'Registration failed. Please check your details.');
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -147,23 +145,6 @@ function Login({ onLoginSuccess }) {
           </p>
         </div>
 
-        {isMock && isLogin && (
-          <div style={{
-            background: 'var(--color-info-bg)',
-            border: '1px solid rgba(59, 130, 246, 0.2)',
-            color: '#93c5fd',
-            padding: '0.75rem',
-            borderRadius: '10px',
-            fontSize: '0.8rem',
-            marginBottom: '1.5rem',
-            textAlign: 'left'
-          }}>
-            <strong>💡 Development Mock Mode</strong><br/>
-            Use email: <code style={{color: 'white'}}>admin@dnyanshree.edu.in</code><br/>
-            Use password: <code style={{color: 'white'}}>admin123</code>
-          </div>
-        )}
-
         {error && (
           <div style={{
             background: 'var(--color-danger-bg)',
@@ -182,20 +163,42 @@ function Login({ onLoginSuccess }) {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'left' }}>
           
           {!isLogin && (
-            <div>
-              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                Full Name
-              </label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="e.g. Prof. Ramesh Patil"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={loading}
-                required
-              />
-            </div>
+            <>
+              <div>
+                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="e.g. Prof. Ramesh Patil"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Department
+                </label>
+                <select
+                  className="input-field"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  disabled={loading}
+                  required
+                >
+                  <option value="AI & DS Engineering">AI & DS Engineering</option>
+                <option value="Computer Science & Engineering">Computer Science & Engineering</option>
+                <option value="Electrical & Computer Engineering">Electrical & Computer Engineering</option>
+                <option value="Electronics & Telecommunication Engineering">Electronics & Telecommunication Engineering</option>
+                <option value="Mechanical & Mechatronics Engineering">Mechanical & Mechatronics Engineering</option>
+                <option value="Applied Science & Engineering">Applied Science & Engineering</option>
+                </select>
+              </div>
+            </>
           )}
 
           <div>

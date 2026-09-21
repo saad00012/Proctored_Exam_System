@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
-import { auth, db, isMock } from '../firebase';
+import { auth, db } from '../firebase';
 import API_BASE_URL from '../config';
 
 function LiveMonitor({ user, defaultDuration = 45 }) {
   const [attempts, setAttempts] = useState([]);
   const [papers, setPapers] = useState([]);
   const [questions, setQuestions] = useState([]);
+  const [usersMap, setUsersMap] = useState({});
   const [selectedAttempt, setSelectedAttempt] = useState(null);
   const [loading, setLoading] = useState(false);
   const [reviewingAttempt, setReviewingAttempt] = useState(null);
@@ -33,6 +34,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       id: 'mock-uid-student-123_paper-1',
       studentId: 'mock-uid-student-123',
       studentName: 'Rahul Patil',
+      prnNumber: '210101001',
       paperId: 'paper-1',
       answers: { 'q-1': 0 }, // Correct is 0 (V = I * R)
       status: 'blocked_pending_review',
@@ -43,6 +45,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       id: 'mock-uid-student-456_paper-1',
       studentId: 'mock-uid-student-456',
       studentName: 'Sneha Deshmukh',
+      prnNumber: '210101002',
       paperId: 'paper-1',
       answers: { 'q-1': 1 }, // Incorrect
       status: 'submitted',
@@ -53,6 +56,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       id: 'mock-uid-student-789_paper-2',
       studentId: 'mock-uid-student-789',
       studentName: 'Aniket Shinde',
+      prnNumber: '210101003',
       paperId: 'paper-2',
       answers: {},
       status: 'started',
@@ -83,16 +87,20 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     }
   ];
 
-  // Fetch attempts, papers, and questions
+  // Fetch attempts, papers, questions, and users
   useEffect(() => {
-    if (isMock || !db) {
-      setPapers(mockPapersList);
-      setQuestions(mockQuestionsList);
-      setAttempts(mockAttemptsList);
-      return;
-    }
-
     setLoading(true);
+
+    // Sync users list to map student profiles & PRN numbers
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const uMap = {};
+      snapshot.forEach((doc) => {
+        uMap[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setUsersMap(uMap);
+    }, (error) => {
+      console.error("Error syncing users in LiveMonitor.jsx:", error);
+    });
 
     // Sync papers list
     const unsubPapers = onSnapshot(collection(db, 'papers'), (snapshot) => {
@@ -130,6 +138,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     });
 
     return () => {
+      unsubUsers();
       unsubPapers();
       unsubQuestions();
       unsubAttempts();
@@ -161,27 +170,10 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       return;
     }
 
-    if (isMock) {
-      const updated = {
-        ...attempt,
-        status: 'started',
-        paperId: unusedPaper.id,
-        warnings: 0,
-        overrideTimeSeconds: overrideMinutes * 60,
-        elapsedTime: 0,
-        startedAt: new Date().toISOString()
-      };
-      setAttempts(prev => prev.map(a => a.id === attempt.id ? updated : a));
-      setReviewingAttempt(null);
-      alert(`[MOCK] Override granted successfully! Assigned new paper: "${unusedPaper.title}" with duration ${overrideMinutes} mins.`);
-      setLoading(false);
-      return;
-    }
-
     try {
-      let token = (user && user.token) || 'mock-teacher';
+      let token = (user && user.token) || '';
       try {
-        if (auth && auth.currentUser && (!user || user.uid !== 'mock-uid-teacher-456')) {
+        if (auth && auth.currentUser) {
           token = await auth.currentUser.getIdToken();
         }
       } catch (e) {
@@ -222,19 +214,11 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     }
 
     setLoading(true);
-    if (isMock) {
-      const updated = { ...attempt, status: 'malpractice_failed' };
-      setAttempts(prev => prev.map(a => a.id === attempt.id ? updated : a));
-      setReviewingAttempt(null);
-      alert("[MOCK] Malpractice confirmed. Session permanently closed.");
-      setLoading(false);
-      return;
-    }
 
     try {
-      let token = (user && user.token) || 'mock-teacher';
+      let token = (user && user.token) || '';
       try {
-        if (auth && auth.currentUser && (!user || user.uid !== 'mock-uid-teacher-456')) {
+        if (auth && auth.currentUser) {
           token = await auth.currentUser.getIdToken();
         }
       } catch (e) {
@@ -268,24 +252,91 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     }
   };
 
-  const handleExportCSV = () => {
-    if (attempts.length === 0) {
-      alert("No attempt logs available to export.");
+  const handleClearStudentLogs = async (studentId, paperId) => {
+    if (!window.confirm("Are you sure you want to completely clear the exam logs and reset the attempt status for this student? This will delete all their attempts and violations for this subject, allowing them to attempt the exam again from the beginning.")) {
       return;
     }
 
-    const headers = ["Student Name", "Department", "Paper Title", "Warnings", "Status", "Score", "Date"];
-    const rows = attempts.map(attempt => {
-      const stats = computeGradeDetails(attempt);
-      const scoreStr = attempt.status === 'submitted' ? `${stats.score}/${stats.total}` : 'N/A';
-      const dateStr = attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleString() : 'N/A';
+    setLoading(true);
+
+    try {
+      let token = (user && user.token) || '';
+      try {
+        if (auth && auth.currentUser) {
+          token = await auth.currentUser.getIdToken();
+        }
+      } catch (e) {
+        console.warn("Using default token");
+      }
+
+      const res = await fetch(`${API_BASE_URL}/teacher/clear-student-attempts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          studentId,
+          paperId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Server returned error.");
+      }
+
+      alert("Student logs and attempts cleared successfully! The student can now restart the exam.");
+    } catch (err) {
+      console.error("Failed to clear student logs:", err);
+      alert("Failed to clear student logs: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportCSV = () => {
+    const groupedStudents = getFilteredGroupedStudents();
+    if (groupedStudents.length === 0) {
+      alert("No student attempts available to export.");
+      return;
+    }
+
+    const headers = ["PRN Number", "Student Name", "Department", "Semester", "Paper Title", "Warnings", "Status", "Score", "Date"];
+    const rows = groupedStudents.map(student => {
+      // Sort attempts ascending (Attempt 1, Attempt 2...) to build historical paper title list
+      const sortedAttempts = [...student.attempts].sort((a, b) => {
+        const timeA = parseTimestampToMs(a.submittedAt || a.startedAt);
+        const timeB = parseTimestampToMs(b.submittedAt || b.startedAt);
+        return timeA - timeB;
+      });
+
+      const latestAttempt = student.latestAttempt;
+      const latestDept = student.department || getPaperDepartment(latestAttempt.paperId);
+
+      const paperTitles = sortedAttempts.map(a => getPaperTitle(a.paperId));
+      const paperTitlesStr = paperTitles.join(", ");
+
+      const statusStr = latestAttempt.status.toUpperCase();
+
+      let scoreStr = 'N/A';
+      if (latestAttempt.status === 'submitted') {
+        const stats = computeGradeDetails(latestAttempt);
+        scoreStr = `${stats.score} of ${stats.total}`; // Using "of" format to prevent Excel date auto-conversion
+      }
+
+      const latestDateStr = latestAttempt.submittedAt || latestAttempt.startedAt;
+      const dateStr = latestDateStr ? new Date(latestDateStr).toLocaleString().replace(/,/g, '') : 'N/A';
+
       return [
-        `"${attempt.studentName.replace(/"/g, '""')}"`,
-        `"${getPaperDepartment(attempt.paperId)}"`,
-        `"${getPaperTitle(attempt.paperId).replace(/"/g, '""')}"`,
-        attempt.warnings,
-        attempt.status.toUpperCase(),
-        scoreStr,
+        `"${(student.prnNumber || 'N/A').replace(/"/g, '""')}"`,
+        `"${student.studentName.replace(/"/g, '""')}"`,
+        `"${latestDept.replace(/"/g, '""')}"`,
+        `"${(student.semester || 'N/A').replace(/"/g, '""')}"`,
+        `"${paperTitlesStr.replace(/"/g, '""')}"`,
+        student.totalWarnings,
+        `"${statusStr}"`,
+        `"${scoreStr}"`,
         `"${dateStr}"`
       ];
     });
@@ -349,7 +400,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     };
   };
 
-  // Group and Filter student attempts dynamically
+  // Group and Filter student attempts dynamically with user profile resolution
   const getFilteredGroupedStudents = () => {
     const groups = {};
     attempts.forEach(attempt => {
@@ -373,6 +424,21 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       });
       
       const latestAttempt = sortedAttempts[0];
+      const userProfile = usersMap[group.studentId] || {};
+      
+      // Resolve student real name (avoid generic "Student")
+      const resolvedName = (userProfile.name && userProfile.name !== 'Student')
+        ? userProfile.name
+        : (latestAttempt.studentName && latestAttempt.studentName !== 'Student')
+          ? latestAttempt.studentName
+          : (group.studentName && group.studentName !== 'Student')
+            ? group.studentName
+            : (userProfile.email ? userProfile.email.split('@')[0] : (latestAttempt.studentEmail ? latestAttempt.studentEmail.split('@')[0] : 'Student'));
+
+      const prnNumber = latestAttempt.prnNumber || userProfile.prnNumber || 'N/A';
+      const department = userProfile.department || latestAttempt.department || getPaperDepartment(latestAttempt.paperId) || 'Unassigned';
+      const semester = userProfile.semester || latestAttempt.semester || 'N/A';
+
       const latestDepartment = getPaperDepartment(latestAttempt.paperId);
       const totalWarnings = group.attempts
         .filter(a => getPaperDepartment(a.paperId) === latestDepartment)
@@ -380,7 +446,11 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       
       return {
         studentId: group.studentId,
-        studentName: group.studentName,
+        studentName: resolvedName,
+        prnNumber,
+        department,
+        semester,
+        email: userProfile.email || latestAttempt.studentEmail || '',
         latestAttempt,
         totalWarnings,
         attempts: sortedAttempts
@@ -388,12 +458,18 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     });
 
     return studentSummaries.filter(student => {
-      if (searchQuery && !student.studentName.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false;
+      if (searchQuery) {
+        const queryLower = searchQuery.toLowerCase();
+        const matchesName = student.studentName.toLowerCase().includes(queryLower);
+        const matchesPrn = (student.prnNumber || '').toLowerCase().includes(queryLower);
+        const matchesEmail = (student.email || '').toLowerCase().includes(queryLower);
+        if (!matchesName && !matchesPrn && !matchesEmail) {
+          return false;
+        }
       }
       
       const latestDepartment = getPaperDepartment(student.latestAttempt.paperId);
-      if (selectedDepartment !== 'All' && latestDepartment !== selectedDepartment) {
+      if (selectedDepartment !== 'All' && latestDepartment !== selectedDepartment && student.department !== selectedDepartment) {
         return false;
       }
 
@@ -492,11 +568,16 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                       onClick={() => setExpandedStudentId(isExpanded ? null : student.studentId)}
                     >
                       <div>
-                        <div className="flex-row" style={{ marginBottom: '0.4rem', alignItems: 'center' }}>
+                        <div className="flex-row" style={{ marginBottom: '0.4rem', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           {student.latestAttempt.status === 'started' && (
                             <span className="live-pulse-dot" title="Student is currently active inside exam" style={{ marginRight: '0.25rem' }} />
                           )}
                           <h4 style={{ fontSize: '1.2rem', fontWeight: 600 }}>{student.studentName}</h4>
+                          {student.prnNumber && student.prnNumber !== 'N/A' && (
+                            <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', fontSize: '0.75rem', fontWeight: 600 }}>
+                              PRN: {student.prnNumber}
+                            </span>
+                          )}
                           <span className={`badge ${
                             student.latestAttempt.status === 'submitted' ? 'badge-success' : 
                             student.latestAttempt.status === 'blocked_pending_review' ? 'badge-danger' : 
@@ -513,7 +594,8 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                         </div>
                         
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          Latest Exam: <strong>{getPaperTitle(student.latestAttempt.paperId)}</strong> ({getPaperDepartment(student.latestAttempt.paperId)})
+                          Latest Exam: <strong>{getPaperTitle(student.latestAttempt.paperId)}</strong> ({student.department || getPaperDepartment(student.latestAttempt.paperId)})
+                          {student.semester && student.semester !== 'N/A' && <span> • Sem: {student.semester}</span>}
                         </p>
                       </div>
 
@@ -548,9 +630,25 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                         flexDirection: 'column',
                         gap: '0.85rem'
                       }}>
-                        <h5 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                          Timeline History ({student.attempts.length} Attempts)
-                        </h5>
+                        <div className="flex-between" style={{ marginBottom: '0.5rem', alignItems: 'center' }}>
+                          <h5 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-secondary)', margin: 0 }}>
+                            Timeline History ({student.attempts.length} Attempts)
+                          </h5>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ 
+                              padding: '0.35rem 0.75rem', 
+                              fontSize: '0.75rem', 
+                              borderColor: 'rgba(239, 68, 68, 0.4)', 
+                              color: '#fca5a5',
+                              background: 'rgba(239, 68, 68, 0.05)'
+                            }}
+                            onClick={() => handleClearStudentLogs(student.studentId, student.latestAttempt.paperId)}
+                            disabled={loading}
+                          >
+                            🧹 Clear Logs / Reset Exam
+                          </button>
+                        </div>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                           {student.attempts.map((attempt, index) => {

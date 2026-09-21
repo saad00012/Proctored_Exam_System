@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { db, isMock } from '../firebase';
+import { db } from '../firebase';
 
 function StudentDirectory() {
   const [students, setStudents] = useState([]);
@@ -37,13 +37,7 @@ function StudentDirectory() {
   ];
 
   useEffect(() => {
-    if (isMock || !db) {
-      setStudents(mockStudents);
-      setAttempts(mockAttempts);
-      setPapers(mockPapers);
-      setQuestions(mockQuestions);
-      return;
-    }
+
 
     setLoading(true);
 
@@ -56,10 +50,11 @@ function StudentDirectory() {
         if (data.role !== 'teacher') {
           list.push({ 
             id: doc.id, 
-            name: data.name || 'Unknown Student', 
+            name: data.name || (data.email ? data.email.split('@')[0] : 'Unknown Student'), 
+            prnNumber: data.prnNumber || 'N/A',
             email: data.email || '', 
             department: data.department || 'N/A',
-            course: data.course || 'N/A',
+            course: data.course || data.department || 'N/A',
             semester: data.semester || 'N/A'
           });
         }
@@ -164,7 +159,8 @@ function StudentDirectory() {
   // Filter students list
   const filteredStudents = students.filter(student => {
     return student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           student.email.toLowerCase().includes(searchQuery.toLowerCase());
+           student.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (student.prnNumber || '').toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   return (
@@ -180,7 +176,7 @@ function StudentDirectory() {
         <input 
           type="text" 
           className="input-field" 
-          placeholder="🔍 Search student by name or email..." 
+          placeholder="🔍 Search student by name, PRN, or email..." 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ maxWidth: '360px', flex: '1 1 200px' }}
@@ -201,6 +197,7 @@ function StudentDirectory() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: 'rgba(255, 255, 255, 0.05)', borderBottom: '1px solid var(--border-color)' }}>
+                  <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>PRN</th>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Name</th>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Email Address</th>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600, textAlign: 'center' }}>Exams</th>
@@ -222,6 +219,9 @@ function StudentDirectory() {
                       }}
                       onClick={() => setSelectedStudent(student)}
                     >
+                      <td style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--primary)' }}>
+                        {student.prnNumber || 'N/A'}
+                      </td>
                       <td style={{ padding: '1rem 1.5rem', fontWeight: 500 }}>
                         {student.name}
                         {isOffender && (
@@ -276,7 +276,7 @@ function StudentDirectory() {
                       {selectedStudent.email}
                     </p>
                     <p style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 600, marginTop: '0.35rem' }}>
-                      🎓 {selectedStudent.course} • {selectedStudent.semester}
+                      🎓 {selectedStudent.course} • {selectedStudent.semester} {selectedStudent.prnNumber && selectedStudent.prnNumber !== 'N/A' && `• PRN: ${selectedStudent.prnNumber}`}
                     </p>
                   </div>
                   <button className="btn btn-secondary" onClick={() => setSelectedStudent(null)} style={{ padding: '0.4rem 0.8rem' }}>

@@ -54,7 +54,7 @@ fun MainScreen(
     val firestore = remember { FirebaseFirestore.getInstance() }
     val auth = remember { FirebaseAuth.getInstance() }
     val currentUser = auth.currentUser
-    val studentId = currentUser?.uid ?: "mock-student-uid"
+    val studentId = currentUser?.uid ?: ""
     val coroutineScope = rememberCoroutineScope()
     val networkService = remember { ExamNetworkService() }
 
@@ -66,6 +66,7 @@ fun MainScreen(
     var studentEmail by remember { mutableStateOf("") }
     var studentCourse by remember { mutableStateOf("N/A") }
     var studentSemester by remember { mutableStateOf("N/A") }
+    var studentPrn by remember { mutableStateOf("N/A") }
 
     var showWarningDialog by remember { mutableStateOf(false) }
     var activeWarningCount by remember { mutableStateOf(0) }
@@ -73,17 +74,18 @@ fun MainScreen(
     var activeWarningSubject by remember { mutableStateOf("") }
     var activeViolationIdState by remember { mutableStateOf("") }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                refreshTrigger++
+    // Real-time listener: auto-refresh when teacher approves/denies blocked attempt
+    DisposableEffect(studentId) {
+        if (studentId.isEmpty()) return@DisposableEffect onDispose {}
+        val listenerRegistration = firestore.collection("exam_attempts")
+            .whereEqualTo("studentId", studentId)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    // Trigger a refresh whenever any attempt document changes
+                    refreshTrigger++
+                }
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { listenerRegistration.remove() }
     }
 
     // Fetch published papers and group them by subject
@@ -96,20 +98,48 @@ fun MainScreen(
                 try {
                     val userDoc = firestore.collection("users").document(studentId).get().await()
                     if (userDoc.exists()) {
-                        studentName = userDoc.getString("name") ?: "Student"
-                        studentCourse = userDoc.getString("course") ?: "N/A"
+                        val fetchedName = userDoc.getString("name")?.takeIf { it.isNotBlank() && it != "Student" }
+                        val resolvedName = fetchedName ?: currentUser.displayName?.takeIf { it.isNotBlank() } ?: studentEmail.substringBefore("@")
+                        studentName = resolvedName
+                        studentCourse = userDoc.getString("department") ?: "N/A"
                         studentSemester = userDoc.getString("semester") ?: "N/A"
+                        studentPrn = userDoc.getString("prnNumber") ?: "N/A"
+                    } else {
+                        // Auto-heal missing Firestore profile
+                        val fallbackName = currentUser.displayName?.takeIf { it.isNotBlank() } ?: (currentUser.email?.substringBefore("@") ?: "Student")
+                        studentName = fallbackName
+                        studentCourse = "Unassigned"
+                        studentSemester = "N/A"
+                        studentPrn = "N/A"
+                        val newProfile = hashMapOf(
+                            "uid" to studentId,
+                            "name" to fallbackName,
+                            "email" to (currentUser.email ?: ""),
+                            "role" to "student",
+                            "department" to "Unassigned",
+                            "semester" to "N/A",
+                            "prnNumber" to "N/A",
+                            "collegeDomain" to (currentUser.email?.substringAfter("@") ?: ""),
+                            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        )
+                        firestore.collection("users").document(studentId).set(newProfile)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                    studentName = currentUser.displayName ?: (currentUser.email?.substringBefore("@") ?: "Student")
                 }
             }
 
-            // 1. Fetch all published papers
-            val papersSnapshot = firestore.collection("papers")
-                .whereEqualTo("status", "published")
-                .get()
-                .await()
+            // 1. Fetch all published papers for the student's department
+            val papersQuery = if (studentCourse != "N/A" && studentCourse.isNotEmpty() && studentCourse != "All") {
+                firestore.collection("papers")
+                    .whereEqualTo("status", "published")
+                    .whereEqualTo("department", studentCourse)
+            } else {
+                firestore.collection("papers")
+                    .whereEqualTo("status", "published")
+            }
+            val papersSnapshot = papersQuery.get().await()
 
             // 2. Fetch all attempts by this student
             val attemptsSnapshot = firestore.collection("exam_attempts")
@@ -180,15 +210,15 @@ fun MainScreen(
                 pId to status
             }
 
-            // Group published papers by subject
+            // Group published papers by subject (fallback to title if missing)
             val papersBySubject = papersSnapshot.documents.groupBy { doc ->
-                doc.getString("subject") ?: ""
+                val subj = doc.getString("subject")
+                if (subj.isNullOrEmpty()) doc.getString("title") ?: "Unknown Exam" else subj
             }
 
             val items = mutableListOf<ExamPaperItem>()
 
             papersBySubject.forEach { (subject, subjectPapers) ->
-                if (subject.isEmpty()) return@forEach
 
                 // Find all attempts by the student for papers in this subject
                 val subjectPaperIds = subjectPapers.map { it.id }
@@ -261,7 +291,7 @@ fun MainScreen(
             examsList = items
         } catch (e: Exception) {
             e.printStackTrace()
-            // Server-connected fallback allocation for mock/offline mode
+            // Server-connected fallback allocation
             try {
                 val papersResp = networkService.makeApiRequest("/papers", "GET", "")
                 val papersArray = papersResp.optJSONArray("papers")
@@ -289,7 +319,7 @@ fun MainScreen(
                     for (i in 0 until attemptsArray.length()) {
                         val att = attemptsArray.getJSONObject(i)
                         val attStudentId = att.optString("studentId")
-                        if (attStudentId == studentId || attStudentId == "mock-uid-student-123" || currentUser == null) {
+                        if (attStudentId == studentId) {
                             subjectAttemptsList.add(att)
                         }
                     }
@@ -415,6 +445,15 @@ fun MainScreen(
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    if (studentPrn != "N/A" && studentPrn.isNotEmpty()) {
+                                        Text(
+                                            text = "PRN: $studentPrn",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
                                 }
                                 
                                 // Device Admin Status Badge
@@ -471,7 +510,7 @@ fun MainScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "COURSE / BRANCH",
                                         fontSize = 9.sp,
@@ -487,7 +526,7 @@ fun MainScreen(
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
-                                        text = "CURRENT SEMESTER",
+                                        text = "SEMESTER",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -644,15 +683,29 @@ fun MainScreen(
                                                 }
                                             }
                                             "blocked" -> {
-                                                Button(
-                                                    onClick = {},
-                                                    enabled = false,
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        disabledContainerColor = MaterialTheme.colorScheme.errorContainer,
-                                                        disabledContentColor = MaterialTheme.colorScheme.error
-                                                    )
+                                                Column(
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                                    horizontalAlignment = Alignment.End
                                                 ) {
-                                                    Text("Blocked")
+                                                    Button(
+                                                        onClick = {},
+                                                        enabled = false,
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            disabledContainerColor = MaterialTheme.colorScheme.errorContainer,
+                                                            disabledContentColor = MaterialTheme.colorScheme.error
+                                                        )
+                                                    ) {
+                                                        Text("🔒 Blocked")
+                                                    }
+                                                    TextButton(
+                                                        onClick = { refreshTrigger++ }
+                                                    ) {
+                                                        Text(
+                                                            "↻ Refresh Status",
+                                                            fontSize = 12.sp,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
                                                 }
                                             }
                                             "failed" -> {

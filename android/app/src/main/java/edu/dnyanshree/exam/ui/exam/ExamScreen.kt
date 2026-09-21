@@ -98,6 +98,7 @@ private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: S
 fun ExamScreen(
     paperId: String,
     onExamFinished: () -> Unit,
+    onViolationSignOut: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -115,7 +116,7 @@ fun ExamScreen(
     // Firestore & Auth handles
     val firestore = remember { FirebaseFirestore.getInstance() }
     val currentUser = remember { FirebaseAuth.getInstance().currentUser }
-    val studentId = currentUser?.uid ?: "mock-student-uid"
+    val studentId = currentUser?.uid ?: ""
     val studentNameState = remember { mutableStateOf("Mock Student") }
     var attemptId by remember(paperId) { mutableStateOf("${studentId}_${paperId}") }
 
@@ -256,14 +257,12 @@ fun ExamScreen(
                 
                 if (!isPermittedPause && timeLeftSeconds > 5) {
                     isExamRunning = false // Stop countdown timer
+                    
                     backgroundScope.launch {
                         try {
-                            val token = if (currentUser != null) {
-                                currentUser.getIdToken(false).await().token
-                            } else {
-                                "mock-student"
-                            }
-
+                            // Fetch fresh token inside coroutine scope FIRST before any signOut
+                            val violationToken = currentUser?.getIdToken(true)?.await()?.token ?: ""
+                            
                             val requestBody = JSONObject().apply {
                                 put("paperId", activePaperId)
                                 put("reason", "Student switched application (focus lost)")
@@ -274,7 +273,7 @@ fun ExamScreen(
                             var retryCount = 0
                             while (!success && retryCount < 3) {
                                 try {
-                                    makeApiRequest("/report-violation", "POST", requestBody, token)
+                                    makeApiRequest("/report-violation", "POST", requestBody, violationToken)
                                     success = true
                                 } catch (e: Exception) {
                                     retryCount++
@@ -300,18 +299,14 @@ fun ExamScreen(
                                 } catch (_: Exception) {}
                             }
                             
-                            // Sign user out immediately to force re-login
-                            FirebaseAuth.getInstance().signOut()
-                            
-                            // Return to lobby/exit cleanly
-                            withContext(Dispatchers.Main) {
-                                onExamFinished()
-                            }
+                                // Navigate to login screen (onViolationSignOut handles signOut + isAuthenticated reset)
+                                withContext(Dispatchers.Main) {
+                                    onViolationSignOut()
+                                }
                         } catch (_: Exception) {
-                            // Safe fallback exit
-                            FirebaseAuth.getInstance().signOut()
+                            // Safe fallback exit — still send to login
                             withContext(Dispatchers.Main) {
-                                onExamFinished()
+                                onViolationSignOut()
                             }
                         }
                     }
@@ -354,11 +349,7 @@ fun ExamScreen(
 
         backgroundScope.launch {
             try {
-                val token = if (currentUser != null) {
-                    currentUser.getIdToken(false).await().token
-                } else {
-                    "mock-student"
-                }
+                val token = currentUser?.getIdToken(true)?.await()?.token ?: ""
 
                 val requestBody = JSONObject().apply {
                     put("paperId", activePaperId)
@@ -381,11 +372,7 @@ fun ExamScreen(
 
         coroutineScope.launch {
             try {
-                val token = if (currentUser != null) {
-                    currentUser.getIdToken(false).await().token
-                } else {
-                    "mock-student"
-                }
+                val token = currentUser?.getIdToken(true)?.await()?.token ?: ""
 
                 val requestBody = JSONObject().apply {
                     put("paperId", activePaperId)
@@ -415,9 +402,9 @@ fun ExamScreen(
                 } catch (_: Exception) {
                     studentNameState.value = currentUser.email?.substringBefore("@") ?: "Student"
                 }
-                currentUser.getIdToken(false).await().token
+                currentUser.getIdToken(true).await().token ?: ""
             } else {
-                "mock-student"
+                ""
             }
 
             // 1. Call server to start/check attempt (authoritative check)
@@ -446,13 +433,8 @@ fun ExamScreen(
                 paperTitle = serverPaper.optString("title", "Exam Paper")
                 paperSubject = serverPaper.optString("subject", "")
             } else {
-                if (paperId == "paper-1") {
-                    paperTitle = "Midterm Circuit Analysis"
-                    paperSubject = "Electrical Engineering"
-                } else {
-                    paperTitle = "Data Structures Quiz 1"
-                    paperSubject = "Computer Science"
-                }
+                paperTitle = "Exam Paper"
+                paperSubject = "N/A"
             }
 
             // Sync countdown timer with backend limit
@@ -469,7 +451,7 @@ fun ExamScreen(
                     // Ignore
                 }
             } else {
-                // In mock mode, fetch threshold from policies endpoints
+
                 try {
                     val policiesResponse = makeApiRequest("/admin/policies", "GET", "")
                     warningThreshold = policiesResponse.optInt("warningThreshold", 3)
@@ -610,11 +592,7 @@ fun ExamScreen(
                 if (!isExamRunning) break
                 
                 try {
-                    val token = if (currentUser != null) {
-                        currentUser.getIdToken(false).await().token
-                    } else {
-                        "mock-student"
-                    }
+                    val token = currentUser?.getIdToken(true)?.await()?.token ?: ""
 
                     val requestBody = JSONObject().apply {
                         put("paperId", activePaperId)
@@ -624,11 +602,14 @@ fun ExamScreen(
                     val status = response.getString("status")
                     
                     if (status == "submitted" || status == "blocked_pending_review" || status == "malpractice_failed" || status == "exited_on_violation") {
-                        // Server terminated the exam
+                        // Server terminated the exam — redirect to login
                         isExamRunning = false
-                        FirebaseAuth.getInstance().signOut()
                         withContext(Dispatchers.Main) {
-                            onExamFinished()
+                            if (status == "submitted") {
+                                onExamFinished() // normal finish, stay logged in
+                            } else {
+                                onViolationSignOut() // violation/block — force re-login
+                            }
                         }
                         break
                     }
