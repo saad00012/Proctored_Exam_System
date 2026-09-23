@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, doc, setDoc, updateDoc, addDoc, query, where, onSnapshot, deleteDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { compressImage } from '../utils/imageCompressor';
+import { compressImageToBase64 } from '../utils/imageCompressor';
 import ExamImport from './ExamImport';
 
 
@@ -561,20 +561,11 @@ function PaperUpload() {
     if (!file) return;
 
     try {
-      setQuestionCompStat('Compressing...');
-      const compressedBlob = await compressImage(file);
-      const compressedFile = new File([compressedBlob], file.name, { type: 'image/jpeg' });
-      
-      // Calculate savings
-      const saving = ((file.size - compressedBlob.size) / file.size * 100).toFixed(0);
-      setQuestionCompStat(`✅ Compressed from ${(file.size / 1024).toFixed(0)}KB to ${(compressedBlob.size / 1024).toFixed(0)}KB (${saving}% saved)`);
-      
-      if (questionPreview) {
-        URL.revokeObjectURL(questionPreview);
-      }
-      const previewUrl = URL.createObjectURL(compressedFile);
-      setQuestionFile(compressedFile);
-      setQuestionPreview(previewUrl);
+      setQuestionCompStat('Compressing image...');
+      const res = await compressImageToBase64(file, 800, 0.65);
+      setQuestionCompStat(`✅ Compressed: ${res.sizeKb} KB (${res.savedPercent}% saved)`);
+      setQuestionFile(res.base64Url);
+      setQuestionPreview(res.base64Url);
     } catch (err) {
       console.error(err);
       setQuestionCompStat('❌ Compression failed: ' + err.message);
@@ -588,40 +579,29 @@ function PaperUpload() {
 
     try {
       const updatedOptions = options.map((opt, i) =>
-        i === index ? { ...opt, compStat: 'Compressing...' } : opt
+        i === index ? { ...opt, compStat: 'Compressing image...' } : opt
       );
       setOptions(updatedOptions);
 
-      const compressedBlob = await compressImage(file);
-      const compressedFile = new File([compressedBlob], file.name, { type: 'image/jpeg' });
-      
-      const saving = ((file.size - compressedBlob.size) / file.size * 100).toFixed(0);
-      
-      const prevPreview = options[index].preview;
-      if (prevPreview) {
-        URL.revokeObjectURL(prevPreview);
-      }
-      const previewUrl = URL.createObjectURL(compressedFile);
+      const res = await compressImageToBase64(file, 600, 0.65);
 
       const nextOptions = options.map((opt, i) =>
         i === index ? {
           ...opt,
-          compStat: `Compressed: ${(compressedBlob.size / 1024).toFixed(0)}KB (${saving}% saved)`,
-          file: compressedFile,
-          preview: previewUrl
+          compStat: `✅ ${res.sizeKb} KB (${res.savedPercent}% saved)`,
+          file: res.base64Url,
+          preview: res.base64Url
         } : opt
       );
       setOptions(nextOptions);
     } catch (err) {
       console.error(err);
       const nextOptions = options.map((opt, i) =>
-        i === index ? { ...opt, compStat: '❌ Failed' } : opt
+        i === index ? { ...opt, compStat: '❌ Failed: ' + err.message } : opt
       );
       setOptions(nextOptions);
     }
   };
-
-
 
   const handleAddQuestionSubmit = async (e) => {
     e.preventDefault();
@@ -630,52 +610,24 @@ function PaperUpload() {
     setLoading(true);
 
     try {
-      let questionImageUrl = null;
-      const optionsData = [];
+      const questionImageUrl = questionFile || null;
+      const optionsData = options.map(opt => ({
+        text: opt.text,
+        imageUrl: opt.file || null
+      }));
 
-        // Live Firebase Uploads: Store in Firebase Storage
-        if (questionFile) {
-          const fileName = `q_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.jpg`;
-          const storageRef = ref(storage, `questions/${selectedPaper.id}/${fileName}`);
-          await uploadBytes(storageRef, questionFile);
-          questionImageUrl = await getDownloadURL(storageRef);
-        }
+      const questionData = {
+        paperId: selectedPaper.id,
+        questionText,
+        questionImageUrl,
+        options: optionsData,
+        correctOptionIndex: correctOption,
+        department: selectedPaper.department
+      };
 
-        for (let i = 0; i < 4; i++) {
-          let optImageUrl = null;
-          if (options[i].file) {
-            const fileName = `opt_${i}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.jpg`;
-            const storageRef = ref(storage, `questions/${selectedPaper.id}/${fileName}`);
-            await uploadBytes(storageRef, options[i].file);
-            optImageUrl = await getDownloadURL(storageRef);
-          }
-          optionsData.push({
-            text: options[i].text,
-            imageUrl: optImageUrl
-          });
-        }
+      await addDoc(collection(db, 'questions'), questionData);
 
-        const questionData = {
-          paperId: selectedPaper.id,
-          questionText,
-          questionImageUrl,
-          options: optionsData,
-          correctOptionIndex: correctOption,
-          department: selectedPaper.department
-        };
-
-        await addDoc(collection(db, 'questions'), questionData);
-
-      // Reset fields with URL revocation
-      if (questionPreview) {
-        URL.revokeObjectURL(questionPreview);
-      }
-      options.forEach(opt => {
-        if (opt.preview) {
-          URL.revokeObjectURL(opt.preview);
-        }
-      });
-
+      // Reset fields
       setQuestionText('');
       setQuestionFile(null);
       setQuestionPreview(null);
@@ -688,7 +640,7 @@ function PaperUpload() {
       ]);
       setCorrectOption(0);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to add question:", err);
       alert("Failed to add question: " + err.message);
     } finally {
       setLoading(false);
@@ -1382,7 +1334,22 @@ function PaperUpload() {
                           />
                           {opt.compStat && <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{opt.compStat}</p>}
                           {opt.preview && (
-                            <img src={opt.preview} alt="" style={{ display: 'block', maxHeight: '40px', marginTop: '0.25rem', borderRadius: '4px' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                              <img src={opt.preview} alt="" style={{ maxHeight: '40px', borderRadius: '4px' }} />
+                              <button
+                                type="button"
+                                className="btn btn-danger"
+                                style={{ padding: '0.15rem 0.4rem', fontSize: '0.65rem' }}
+                                onClick={() => {
+                                  const nextOptions = options.map((o, i) =>
+                                    i === index ? { ...o, file: null, preview: null, compStat: '' } : o
+                                  );
+                                  setOptions(nextOptions);
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
