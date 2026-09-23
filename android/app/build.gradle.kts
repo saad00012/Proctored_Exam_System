@@ -18,13 +18,13 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:5000\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://proctored-exam-system-3z35.onrender.com\"")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "API_BASE_URL", "\"https://your-production-url.com\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://proctored-exam-system-3z35.onrender.com\"")
         }
     }
     compileOptions {

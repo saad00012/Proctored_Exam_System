@@ -11,81 +11,12 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
   const [selectedAttempt, setSelectedAttempt] = useState(null);
   const [loading, setLoading] = useState(false);
   const [reviewingAttempt, setReviewingAttempt] = useState(null);
-  const [overrideMinutes, setOverrideMinutes] = useState(defaultDuration);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [expandedStudentId, setExpandedStudentId] = useState(null);
-
-  // Sync remaining override time on selection
-  useEffect(() => {
-    if (reviewingAttempt) {
-      const elapsedMin = Math.round((reviewingAttempt.elapsedTime || 0) / 60);
-      const remaining = Math.max(5, defaultDuration - elapsedMin);
-      setOverrideMinutes(remaining);
-    }
-  }, [reviewingAttempt, defaultDuration]);
-
-  // Mock attempts data
-  const mockAttemptsList = [
-    {
-      id: 'mock-uid-student-123_paper-1',
-      studentId: 'mock-uid-student-123',
-      studentName: 'Rahul Patil',
-      prnNumber: '210101001',
-      paperId: 'paper-1',
-      answers: { 'q-1': 0 }, // Correct is 0 (V = I * R)
-      status: 'blocked_pending_review',
-      warnings: 3,
-      submittedAt: new Date().toISOString()
-    },
-    {
-      id: 'mock-uid-student-456_paper-1',
-      studentId: 'mock-uid-student-456',
-      studentName: 'Sneha Deshmukh',
-      prnNumber: '210101002',
-      paperId: 'paper-1',
-      answers: { 'q-1': 1 }, // Incorrect
-      status: 'submitted',
-      warnings: 0,
-      submittedAt: new Date().toISOString()
-    },
-    {
-      id: 'mock-uid-student-789_paper-2',
-      studentId: 'mock-uid-student-789',
-      studentName: 'Aniket Shinde',
-      prnNumber: '210101003',
-      paperId: 'paper-2',
-      answers: {},
-      status: 'started',
-      warnings: 1,
-      submittedAt: null
-    }
-  ];
-
-  const mockPapersList = [
-    { id: 'paper-1', title: 'Midterm Circuit Analysis', department: 'Electrical Engineering', status: 'published' },
-    { id: 'paper-2', title: 'Data Structures Quiz 1', department: 'Computer Science', status: 'published' }
-  ];
-
-  const mockQuestionsList = [
-    {
-      id: 'q-1',
-      paperId: 'paper-1',
-      questionText: "Which formula represents Ohm's Law?",
-      questionImageUrl: null,
-      options: [
-        { text: 'V = I * R', imageUrl: null },
-        { text: 'P = V * I', imageUrl: null },
-        { text: 'R = V * P', imageUrl: null },
-        { text: 'I = V * R', imageUrl: null }
-      ],
-      correctOptionIndex: 0,
-      department: 'Electrical Engineering'
-    }
-  ];
 
   // Fetch attempts, papers, questions, and users
   useEffect(() => {
@@ -145,12 +76,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     };
   }, [user]);
 
-  const handleGrantOverride = async (attempt) => {
-    if (!overrideMinutes || overrideMinutes <= 0) {
-      alert("Please enter a valid override duration.");
-      return;
-    }
-
+  const handleGrantAccess = async (attempt) => {
     setLoading(true);
     const department = getPaperDepartment(attempt.paperId);
 
@@ -165,7 +91,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     }
 
     if (!unusedPaper) {
-      alert(`No papers available under department "${department}" to assign for this override.`);
+      alert(`No papers available under department "${department}" to assign for this student.`);
       setLoading(false);
       return;
     }
@@ -188,8 +114,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         },
         body: JSON.stringify({
           studentId: attempt.studentId,
-          paperId: unusedPaper.id,
-          overrideMinutes: parseInt(overrideMinutes)
+          paperId: unusedPaper.id
         })
       });
 
@@ -199,10 +124,10 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       }
 
       setReviewingAttempt(null);
-      alert(`Override granted successfully! Assigned new paper: "${data.newPaperTitle || unusedPaper.title}" with duration ${overrideMinutes} mins.`);
+      alert(`Access granted successfully! Student has been unblocked with assigned paper: "${data.newPaperTitle || unusedPaper.title}".`);
     } catch (err) {
-      console.error("Failed to grant override:", err);
-      alert("Failed to grant override: " + err.message);
+      console.error("Failed to grant access:", err);
+      alert("Failed to grant access: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -903,24 +828,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
               ⚠️ Student was hard-blocked from their exam session due to multiple app-switching / minimize violations.
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem' }}>
-              <div>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
-                  Adjust Override Duration (Minutes)
-                </label>
-                <input
-                  type="number"
-                  className="input-field"
-                  value={overrideMinutes}
-                  onChange={(e) => setOverrideMinutes(e.target.value)}
-                  min="5"
-                  max="180"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button 
                 className="btn btn-secondary" 
                 onClick={() => setReviewingAttempt(null)}
@@ -933,14 +841,14 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                 onClick={() => handleDenyMalpractice(reviewingAttempt)}
                 disabled={loading}
               >
-                Confirm Malpractice (Deny)
+                🚫 Deny Access (Disqualify)
               </button>
               <button 
                 className="btn btn-primary" 
-                onClick={() => handleGrantOverride(reviewingAttempt)}
+                onClick={() => handleGrantAccess(reviewingAttempt)}
                 disabled={loading}
               >
-                {loading ? 'Processing...' : 'Grant Override'}
+                {loading ? 'Processing...' : '✅ Grant Access (Unblock)'}
               </button>
             </div>
           </div>

@@ -71,20 +71,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 
-// Data models for the exam
-data class Question(
-    val id: String,
-    val questionText: String,
-    val questionImageUrl: String?,
-    val options: List<Option>,
-    val correctOptionIndex: Int,
-    val subject: String
-)
-
-data class Option(
-    val text: String,
-    val imageUrl: String?
-)
+import edu.dnyanshree.exam.data.model.Question
+import edu.dnyanshree.exam.data.model.Option
+import edu.dnyanshree.exam.ui.exam.components.TimerBadge
+import edu.dnyanshree.exam.ui.exam.components.ScorecardOverlay
+import edu.dnyanshree.exam.ui.exam.components.MalpracticeAlertDialog
 
 private val networkService = ExamNetworkService()
 
@@ -117,7 +108,7 @@ fun ExamScreen(
     val firestore = remember { FirebaseFirestore.getInstance() }
     val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val studentId = currentUser?.uid ?: ""
-    val studentNameState = remember { mutableStateOf("Mock Student") }
+    val studentNameState = remember { mutableStateOf(currentUser?.displayName ?: "Student") }
     var attemptId by remember(paperId) { mutableStateOf("${studentId}_${paperId}") }
 
     // Device Admin Configuration & Verification
@@ -1140,17 +1131,41 @@ fun ExamScreen(
                         }
                     }
 
-                    // Navigation Buttons Row (Strictly Linear progress - Next unlocks only on answer)
+                    // Navigation Buttons Row (Forward-only progress: Skip allowed, Back forbidden)
                     val isCurrentAnswered = selectedAnswers.containsKey(currentQuestion.id)
+                    val isLastQuestion = currentQuestionIdx >= questions.size - 1
+
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = { currentQuestionIdx += 1 },
-                            enabled = currentQuestionIdx < questions.size - 1 && isCurrentAnswered
-                        ) {
-                            Text("Next Question", fontSize = 13.sp)
+                        if (!isLastQuestion) {
+                            if (isCurrentAnswered) {
+                                Button(
+                                    onClick = { currentQuestionIdx += 1 },
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Next Question →", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { currentQuestionIdx += 1 },
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Skip & Next →", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        } else {
+                            Button(
+                                onClick = { submitExam() },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Finish & Submit Exam ✓", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

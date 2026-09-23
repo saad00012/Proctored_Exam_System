@@ -3,12 +3,17 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+dist/
+dashboard/dist/
 
 # === Environment & Secrets ===
 .env
 .env.local
-.env.production
+.env.*.local
 *.env
+!.env.example
+!.env.development
+!.env.production
 
 # === Firebase / Google Credentials ===
 google-services.json
@@ -39,4 +44,6 @@ Thumbs.db
 
 # === Misc ===
 backend.zip
+*.zip
+.kotlin/
 pdf_gen2/

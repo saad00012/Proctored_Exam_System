@@ -57,9 +57,10 @@ function Login({ onLoginSuccess }) {
         setLoading(false);
       }
     } else {
-      // Registration Flow (Faculty Sign Up)
-      if (!name || !email || !password || !department) {
-        setError('All fields are required for registration.');
+      // Registration Flow (Faculty / Admin Sign Up)
+      const isAdminEmail = email.trim().toLowerCase().startsWith('admin');
+      if (!name || !email || !password || (!department && !isAdminEmail)) {
+        setError('All required fields must be filled.');
         return;
       }
 
@@ -94,8 +95,8 @@ function Login({ onLoginSuccess }) {
           body: JSON.stringify({
             name: name,
             phoneNumber: '0000000000',
-            role: 'teacher',
-            department: department,
+            role: isAdminEmail ? 'superadmin' : 'teacher',
+            department: isAdminEmail ? 'Administration' : department,
             semester: 'N/A'
           })
         });
@@ -105,7 +106,7 @@ function Login({ onLoginSuccess }) {
           throw new Error(errData.error || 'Failed to create user profile on backend.');
         }
 
-        console.log("✅ Faculty registered & logged in successfully with Firebase.");
+        console.log(`✅ ${isAdminEmail ? 'Admin' : 'Faculty'} registered & logged in successfully with Firebase.`);
         
         onLoginSuccess({
           uid: user.uid,
@@ -179,25 +180,42 @@ function Login({ onLoginSuccess }) {
                 />
               </div>
               
-              <div>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                  Department
-                </label>
-                <select
-                  className="input-field"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  disabled={loading}
-                  required
-                >
-                  <option value="AI & DS Engineering">AI & DS Engineering</option>
-                <option value="Computer Science & Engineering">Computer Science & Engineering</option>
-                <option value="Electrical & Computer Engineering">Electrical & Computer Engineering</option>
-                <option value="Electronics & Telecommunication Engineering">Electronics & Telecommunication Engineering</option>
-                <option value="Mechanical & Mechatronics Engineering">Mechanical & Mechatronics Engineering</option>
-                <option value="Applied Science & Engineering">Applied Science & Engineering</option>
-                </select>
-              </div>
+              {email.trim().toLowerCase().startsWith('admin') ? (
+                <div style={{
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  background: 'rgba(79, 70, 229, 0.1)',
+                  border: '1px solid rgba(79, 70, 229, 0.25)',
+                  fontSize: '0.82rem',
+                  color: 'var(--primary)',
+                  textAlign: 'left'
+                }}>
+                  👑 <strong>Super Admin Account</strong><br/>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                    Scope: College-wide Administration (No course/semester required)
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                    Faculty Department
+                  </label>
+                  <select
+                    className="input-field"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    disabled={loading}
+                    required
+                  >
+                    <option value="AI & DS Engineering">AI & DS Engineering</option>
+                    <option value="Computer Science & Engineering">Computer Science & Engineering</option>
+                    <option value="Electrical & Computer Engineering">Electrical & Computer Engineering</option>
+                    <option value="Electronics & Telecommunication Engineering">Electronics & Telecommunication Engineering</option>
+                    <option value="Mechanical & Mechatronics Engineering">Mechanical & Mechatronics Engineering</option>
+                    <option value="Applied Science & Engineering">Applied Science & Engineering</option>
+                  </select>
+                </div>
+              )}
             </>
           )}
 

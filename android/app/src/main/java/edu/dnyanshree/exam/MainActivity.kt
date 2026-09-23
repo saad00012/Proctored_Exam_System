@@ -16,6 +16,8 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
+    edu.dnyanshree.exam.theme.ThemeManager.init(this)
+
     // Globally enforce screenshot and screen recording blocking, which also thwarts Assistant screenshots (Circle to Search)
     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 

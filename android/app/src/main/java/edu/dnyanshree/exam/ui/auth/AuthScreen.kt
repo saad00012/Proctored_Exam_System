@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -45,18 +46,13 @@ import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import edu.dnyanshree.exam.BuildConfig
+import edu.dnyanshree.exam.data.network.ExamNetworkService
 import edu.dnyanshree.exam.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
-
-// Backend base URL (127.0.0.1 maps to localhost)
-private const val BACKEND_URL = BuildConfig.API_BASE_URL
 
 private val PrimaryGradient = Brush.linearGradient(listOf(Indigo500, Violet500))
 private val BackgroundGradient = Brush.verticalGradient(listOf(SurfaceLight, Color(0xFFF0F0FF)))
@@ -106,7 +102,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundGradient),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -140,13 +136,13 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                 text = "SecureExam",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = Gray900,
+                color = MaterialTheme.colorScheme.onBackground,
                 letterSpacing = (-0.5).sp
             )
             Text(
                 text = "Dnyanshree Institute of Technology",
                 fontSize = 13.sp,
-                color = Gray400,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -155,16 +151,11 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
 
             // === Main Card ===
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(
-                        elevation = 20.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        ambientColor = Color(0x1A000000)
-                    ),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
 
@@ -390,38 +381,11 @@ private fun StyledTextField(
 // Private Business Logic Functions (unchanged from original)
 // ===================================================================
 
-// Core API call functions
-private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: String, authToken: String? = null): JSONObject = withContext(Dispatchers.IO) {
-    val url = URL("$BACKEND_URL$endpoint")
-    val conn = url.openConnection() as HttpURLConnection
-    conn.requestMethod = method
-    conn.connectTimeout = 60000
-    conn.readTimeout = 60000
-    conn.doInput = true
-    conn.setRequestProperty("Content-Type", "application/json")
-    if (authToken != null) {
-        conn.setRequestProperty("Authorization", "Bearer $authToken")
-    }
+private val networkService = ExamNetworkService()
 
-    if (method == "POST" || method == "PUT") {
-        conn.doOutput = true
-        OutputStreamWriter(conn.outputStream).use { writer ->
-            writer.write(jsonBody)
-            writer.flush()
-        }
-    }
-
-    val responseCode = conn.responseCode
-    val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-    val responseText = stream.bufferedReader().use { it.readText() }
-
-    if (responseCode !in 200..299) {
-        val errorJson = try { JSONObject(responseText) } catch(e: Exception) { null }
-        val errorMsg = errorJson?.optString("error") ?: "Server returned error code $responseCode"
-        throw Exception(errorMsg)
-    }
-
-    JSONObject(responseText)
+// Core API call functions delegated to ExamNetworkService
+private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: String, authToken: String? = null): JSONObject {
+    return networkService.makeApiRequest(endpoint, method, jsonBody, authToken)
 }
 
 // Auth Flow Trigger Actions

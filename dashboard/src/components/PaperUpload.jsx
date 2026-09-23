@@ -61,24 +61,6 @@ function PaperUpload() {
   const [expandedExams, setExpandedExams] = useState({});
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // Mock questions persistent database state
-  const [mockQuestions, setMockQuestions] = useState([
-    {
-      id: 'q-1',
-      paperId: 'paper-1',
-      questionText: "Which formula represents Ohm's Law?",
-      questionImageUrl: null,
-      options: [
-        { text: 'V = I * R', imageUrl: null },
-        { text: 'P = V * I', imageUrl: null },
-        { text: 'R = V * P', imageUrl: null },
-        { text: 'I = V * R', imageUrl: null }
-      ],
-      correctOptionIndex: 0,
-      department: 'Electrical Engineering'
-    }
-  ]);
-
   // New Question Form State
   const [questionText, setQuestionText] = useState('');
   const [questionFile, setQuestionFile] = useState(null);
@@ -94,7 +76,7 @@ function PaperUpload() {
   ]);
   const [correctOption, setCorrectOption] = useState(0);
 
-  // Mock initial data
+  // Sync papers from Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'papers'), (snapshot) => {
       const papersList = [];
@@ -123,7 +105,7 @@ function PaperUpload() {
     return () => unsubscribe();
   }, []);
 
-  // Sync questions when paper is selected
+  // Sync questions for selected paper
   useEffect(() => {
     if (!selectedPaper) {
       setQuestions([]);
@@ -142,7 +124,7 @@ function PaperUpload() {
     });
 
     return () => unsubscribe();
-  }, [selectedPaper, mockQuestions]);
+  }, [selectedPaper]);
 
   // Track select changes to sync edit fields
   useEffect(() => {
@@ -168,6 +150,8 @@ function PaperUpload() {
       subject: paperSubject,
       department: paperDepartment,
       status: 'draft',
+      isVisible: false,
+      isHidden: true,
       createdAt: new Date().toISOString(),
       ...(paperDuration && { durationMinutes: parseInt(paperDuration) }),
       ...(paperScheduleStart && { scheduleStart: paperScheduleStart }),
@@ -201,11 +185,190 @@ function PaperUpload() {
     setLoading(true);
 
     try {
-      await updateDoc(doc(db, 'papers', selectedPaper.id), { status: 'published' });
-      setSelectedPaper({ ...selectedPaper, status: 'published' });
+      await updateDoc(doc(db, 'papers', selectedPaper.id), {
+        status: 'published',
+        isVisible: true,
+        isHidden: false
+      });
+      setSelectedPaper({ ...selectedPaper, status: 'published', isVisible: true, isHidden: false });
     } catch (err) {
       console.error("Failed to publish paper:", err);
       alert("Failed to publish: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleExamVisibility = async (exam) => {
+    const examPapers = papers.filter(p => p.examId === exam.id);
+    const isCurrentlyPublished = (exam.status === 'published' || (examPapers.length > 0 && examPapers.every(p => p.status === 'published'))) && exam.isVisible !== false && !exam.isHidden;
+    const nextStatus = isCurrentlyPublished ? 'draft' : 'published';
+    const nextVisible = !isCurrentlyPublished;
+
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'exams', exam.id), {
+        status: nextStatus,
+        isVisible: nextVisible,
+        isHidden: !nextVisible
+      });
+      if (examPapers.length > 0) {
+        await Promise.all(examPapers.map(p =>
+          updateDoc(doc(db, 'papers', p.id), {
+            status: nextStatus,
+            isVisible: nextVisible,
+            isHidden: !nextVisible
+          })
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to toggle exam visibility:", err);
+      alert("Failed to toggle visibility: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartExamSession = async (exam) => {
+    const examPapers = papers.filter(p => p.examId === exam.id);
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'exams', exam.id), {
+        isStarted: true,
+        examOtp: otp,
+        sessionStartedAt: new Date().toISOString(),
+        status: 'published',
+        isVisible: true,
+        isHidden: false
+      });
+      if (examPapers.length > 0) {
+        await Promise.all(examPapers.map(p =>
+          updateDoc(doc(db, 'papers', p.id), {
+            isStarted: true,
+            examOtp: otp,
+            sessionStartedAt: new Date().toISOString(),
+            status: 'published',
+            isVisible: true,
+            isHidden: false
+          })
+        ));
+      }
+      alert(`Exam session started! Room OTP Key is: ${otp}. Disclose this code to students in the examination room.`);
+    } catch (err) {
+      console.error("Failed to start exam session:", err);
+      alert("Failed to start session: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEndExamSession = async (exam) => {
+    if (!window.confirm("Are you sure you want to end this live exam session? Students who have not entered will no longer be able to start.")) return;
+    const examPapers = papers.filter(p => p.examId === exam.id);
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'exams', exam.id), {
+        isStarted: false,
+        sessionEndedAt: new Date().toISOString()
+      });
+      if (examPapers.length > 0) {
+        await Promise.all(examPapers.map(p =>
+          updateDoc(doc(db, 'papers', p.id), {
+            isStarted: false,
+            sessionEndedAt: new Date().toISOString()
+          })
+        ));
+      }
+      alert("Exam session ended successfully.");
+    } catch (err) {
+      console.error("Failed to end exam session:", err);
+      alert("Failed to end session: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerateOtp = async (exam) => {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const examPapers = papers.filter(p => p.examId === exam.id);
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'exams', exam.id), {
+        examOtp: otp
+      });
+      if (examPapers.length > 0) {
+        await Promise.all(examPapers.map(p =>
+          updateDoc(doc(db, 'papers', p.id), {
+            examOtp: otp
+          })
+        ));
+      }
+      alert(`New Room OTP generated: ${otp}`);
+    } catch (err) {
+      alert("Failed to regenerate OTP: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartPaperSession = async (paper, e) => {
+    if (e) e.stopPropagation();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'papers', paper.id), {
+        isStarted: true,
+        examOtp: otp,
+        sessionStartedAt: new Date().toISOString(),
+        status: 'published',
+        isVisible: true,
+        isHidden: false
+      });
+      if (selectedPaper && selectedPaper.id === paper.id) {
+        setSelectedPaper({ ...selectedPaper, isStarted: true, examOtp: otp, status: 'published', isVisible: true, isHidden: false });
+      }
+      alert(`Exam session started! Room OTP Key is: ${otp}`);
+    } catch (err) {
+      alert("Failed to start session: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEndPaperSession = async (paper, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm("End this live exam session?")) return;
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'papers', paper.id), {
+        isStarted: false,
+        sessionEndedAt: new Date().toISOString()
+      });
+      if (selectedPaper && selectedPaper.id === paper.id) {
+        setSelectedPaper({ ...selectedPaper, isStarted: false });
+      }
+    } catch (err) {
+      alert("Failed to end session: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegeneratePaperOtp = async (paper, e) => {
+    if (e) e.stopPropagation();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'papers', paper.id), {
+        examOtp: otp
+      });
+      if (selectedPaper && selectedPaper.id === paper.id) {
+        setSelectedPaper({ ...selectedPaper, examOtp: otp });
+      }
+      alert(`New Room OTP generated: ${otp}`);
+    } catch (err) {
+      alert("Failed to regenerate OTP: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -291,6 +454,8 @@ function PaperUpload() {
         ...(examScheduleStart && { scheduleStart: examScheduleStart }),
         ...(examScheduleEnd && { scheduleEnd: examScheduleEnd }),
         status: 'draft',
+        isVisible: false,
+        isHidden: true,
         createdAt: new Date().toISOString()
       });
       setExamName(''); setExamSubject(''); setExamDepartment('AI & DS Engineering'); setExamSemester('Semester 7');
@@ -307,6 +472,7 @@ function PaperUpload() {
     if (!newSetTitle.trim()) return;
     const exam = exams.find(ex => ex.id === examId);
     if (!exam) return;
+    const examIsVisible = exam.status === 'published' && exam.isVisible !== false && !exam.isHidden;
     setLoading(true);
     try {
       await addDoc(collection(db, 'papers'), {
@@ -317,7 +483,9 @@ function PaperUpload() {
         ...(exam.durationMinutes && { durationMinutes: exam.durationMinutes }),
         ...(exam.scheduleStart && { scheduleStart: exam.scheduleStart }),
         ...(exam.scheduleEnd && { scheduleEnd: exam.scheduleEnd }),
-        status: 'draft',
+        status: examIsVisible ? 'published' : 'draft',
+        isVisible: examIsVisible,
+        isHidden: !examIsVisible,
         createdAt: new Date().toISOString()
       });
       setNewSetTitle('');
@@ -646,20 +814,27 @@ function PaperUpload() {
               const examPapers = papers.filter(p => p.examId === exam.id);
               const isExpanded = !!expandedExams[exam.id];
               const isEditingThisExam = editingExamId === exam.id;
-              const allPublished = examPapers.length > 0 && examPapers.every(p => p.status === 'published');
-              const anyPublished = examPapers.some(p => p.status === 'published');
+              const isExamStarted = exam.isStarted === true;
+              const isExamVisible = (exam.status === 'published' || (examPapers.length > 0 && examPapers.every(p => p.status === 'published'))) && exam.isVisible !== false && !exam.isHidden;
+              const anyPublished = examPapers.some(p => p.status === 'published' && p.isVisible !== false && !p.isHidden);
 
               return (
                 <div key={exam.id} className="glass-card" style={{ padding: '1.5rem' }}>
                   {/* Exam header row */}
-                  <div className="flex-between" style={{ alignItems: 'flex-start', marginBottom: isExpanded ? '1.25rem' : '0' }}>
+                  <div className="flex-between" style={{ alignItems: 'flex-start', marginBottom: (isExpanded || isExamStarted) ? '1.25rem' : '0' }}>
                     <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedExams(prev => ({ ...prev, [exam.id]: !prev[exam.id] }))}>
-                      <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '1.1rem' }}>{isExpanded ? '▼' : '▶'}</span>
                         <h4 style={{ fontSize: '1.15rem', margin: 0 }}>{exam.name}</h4>
-                        <span className={`badge ${allPublished ? 'badge-success' : anyPublished ? 'badge-warning' : 'badge-warning'}`}>
-                          {allPublished ? 'All Published' : anyPublished ? 'Partial' : 'Draft'}
-                        </span>
+                        {isExamStarted ? (
+                          <span className="badge badge-success" style={{ background: '#059669', color: '#ffffff', fontWeight: 'bold' }}>
+                            🟢 Live in Room (OTP: {exam.examOtp || 'Active'})
+                          </span>
+                        ) : (
+                          <span className={`badge ${isExamVisible ? 'badge-success' : anyPublished ? 'badge-warning' : 'badge-warning'}`} style={!isExamVisible ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
+                            {isExamVisible ? '👁️ Published (Ready to Start)' : anyPublished ? 'Partial Visible' : '🔒 Hidden from App'}
+                          </span>
+                        )}
                         <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>
                           {examPapers.length} set{examPapers.length !== 1 ? 's' : ''}
                         </span>
@@ -670,16 +845,90 @@ function PaperUpload() {
                         {exam.scheduleStart && <> &nbsp;|&nbsp; 🗓️ {formatScheduleDate(exam.scheduleStart)} → {formatScheduleDate(exam.scheduleEnd)}</>}
                       </p>
                     </div>
-                    <div className="flex-row" style={{ gap: '0.5rem', marginLeft: '1rem' }}>
+
+                    <div className="flex-row" style={{ gap: '0.5rem', marginLeft: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {isExamStarted ? (
+                        <button
+                          className="btn btn-danger"
+                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', fontWeight: 'bold' }}
+                          onClick={(e) => { e.stopPropagation(); handleEndExamSession(exam); }}
+                          disabled={loading}
+                        >
+                          ⏹️ End Session
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', background: 'linear-gradient(135deg,#059669,#047857)', fontWeight: 'bold' }}
+                          onClick={(e) => { e.stopPropagation(); handleStartExamSession(exam); }}
+                          disabled={loading}
+                          title="Start exam session and generate 6-digit room key OTP for students"
+                        >
+                          ▶️ Start Exam (Generate OTP)
+                        </button>
+                      )}
+
+                      <button
+                        className="btn btn-secondary"
+                        style={{
+                          fontSize: '0.78rem',
+                          padding: '0.35rem 0.75rem',
+                          background: isExamVisible ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: isExamVisible ? '#10b981' : '#f87171',
+                          border: isExamVisible ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                        }}
+                        onClick={(e) => { e.stopPropagation(); handleToggleExamVisibility(exam); }}
+                        disabled={loading}
+                        title={isExamVisible ? 'Hide all sets of this exam from student app' : 'Publish and make all sets visible to students'}
+                      >
+                        {isExamVisible ? '👁️ Visible' : '🔒 Hidden'}
+                      </button>
                       <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }}
                         onClick={() => { setEditingExamId(exam.id); setEditExamName(exam.name); setEditExamSubject(exam.subject); setEditExamDepartment(exam.department); setEditExamSemester(exam.semester || 'Semester 7'); setEditExamDuration(exam.durationMinutes || ''); setEditExamScheduleStart(exam.scheduleStart || ''); setEditExamScheduleEnd(exam.scheduleEnd || ''); setExpandedExams(prev => ({ ...prev, [exam.id]: true })); }}>
-                        ✏️ Edit Settings
+                        ✏️ Edit
                       </button>
                       <button className="btn btn-danger" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }} onClick={e => handleDeleteExam(exam.id, e)} disabled={loading}>
                         🗑️
                       </button>
                     </div>
                   </div>
+
+                  {/* Prominent Active Exam OTP Room Banner */}
+                  {isExamStarted && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 95, 70, 0.2))',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      borderRadius: '10px',
+                      padding: '1rem 1.25rem',
+                      marginBottom: isExpanded ? '1.25rem' : '0',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '1rem'
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#10b981', letterSpacing: '0.5px' }}>● EXAM IN PROGRESS IN ROOM</span>
+                          <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>Students Can Enter</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Room OTP Key:</span>
+                          <span style={{ fontSize: '1.75rem', fontWeight: '900', letterSpacing: '4px', color: '#34d399', fontFamily: 'monospace' }}>
+                            {exam.examOtp || '------'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-row" style={{ gap: '0.5rem' }}>
+                        <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem' }} onClick={() => { navigator.clipboard.writeText(exam.examOtp || ''); alert(`Room OTP ${exam.examOtp} copied!`); }}>
+                          📋 Copy OTP
+                        </button>
+                        <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem' }} onClick={() => handleRegenerateOtp(exam)} disabled={loading}>
+                          🔄 New OTP
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Inline Edit Exam Settings form */}
                   {isEditingThisExam && (
@@ -737,19 +986,27 @@ function PaperUpload() {
                         </p>
                       )}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
-                        {examPapers.map((paper, idx) => (
-                          <div key={paper.id} className="flex-between" style={{ padding: '0.85rem 1rem', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                            <div>
-                              <span style={{ fontWeight: 500, fontSize: '0.92rem' }}>Set {idx + 1}: {paper.title}</span>
-                              <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Created {formatCreatedDate(paper.createdAt)}</span>
+                        {examPapers.map((paper, idx) => {
+                          const isPaperVisible = paper.status === 'published' && paper.isVisible !== false && !paper.isHidden;
+                          return (
+                            <div key={paper.id} className="flex-between" style={{ padding: '0.85rem 1rem', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                              <div>
+                                <span style={{ fontWeight: 500, fontSize: '0.92rem' }}>Set {idx + 1}: {paper.title}</span>
+                                <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Created {formatCreatedDate(paper.createdAt)}</span>
+                              </div>
+                              <div className="flex-row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+                                <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.72rem', ...(isPaperVisible ? {} : { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }) }}>
+                                  {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
+                                </span>
+                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={(e) => handleTogglePaperVisibility(paper, e)} disabled={loading}>
+                                  {isPaperVisible ? 'Hide' : 'Publish'}
+                                </button>
+                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={() => setSelectedPaper(paper)}>Open</button>
+                                <button className="btn btn-danger" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
+                              </div>
                             </div>
-                            <div className="flex-row" style={{ gap: '0.5rem' }}>
-                              <span className={`badge ${paper.status === 'published' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.72rem' }}>{paper.status}</span>
-                              <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={() => setSelectedPaper(paper)}>Open</button>
-                              <button className="btn btn-danger" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Add paper set inline */}
@@ -776,21 +1033,46 @@ function PaperUpload() {
             <div style={{ marginTop: '2rem' }}>
               <h4 style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>📄 Standalone Papers</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {papers.filter(p => !p.examId).map(paper => (
-                  <div key={paper.id} className="glass-card flex-between" style={{ padding: '1.25rem 1.5rem', cursor: 'pointer' }} onClick={() => setSelectedPaper(paper)}>
-                    <div>
-                      <h4 style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>{paper.title}</h4>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                        Department: <strong>{paper.department}</strong> | Created: {formatCreatedDate(paper.createdAt)}
-                      </p>
+                {papers.filter(p => !p.examId).map(paper => {
+                  const isPaperVisible = paper.status === 'published' && paper.isVisible !== false && !paper.isHidden;
+                  const isPaperStarted = paper.isStarted === true;
+                  return (
+                    <div key={paper.id} className="glass-card flex-between" style={{ padding: '1.25rem 1.5rem', cursor: 'pointer' }} onClick={() => setSelectedPaper(paper)}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <h4 style={{ fontSize: '1.1rem', margin: 0 }}>{paper.title}</h4>
+                          {isPaperStarted && (
+                            <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>
+                              🟢 OTP: {paper.examOtp || 'Active'}
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                          Department: <strong>{paper.department}</strong> | Created: {formatCreatedDate(paper.createdAt)}
+                        </p>
+                      </div>
+                      <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center' }}>
+                        {isPaperStarted ? (
+                          <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleEndPaperSession(paper, e)} disabled={loading}>
+                            ⏹️ End Session
+                          </button>
+                        ) : (
+                          <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={e => handleStartPaperSession(paper, e)} disabled={loading}>
+                            ▶️ Start Exam (OTP)
+                          </button>
+                        )}
+                        <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={!isPaperVisible ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
+                          {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
+                        </span>
+                        <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleTogglePaperVisibility(paper, e)} disabled={loading}>
+                          {isPaperVisible ? '🔒 Hide' : '👁️ Publish'}
+                        </button>
+                        <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>Open</button>
+                        <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
+                      </div>
                     </div>
-                    <div className="flex-row" style={{ gap: '0.75rem' }}>
-                      <span className={`badge ${paper.status === 'published' ? 'badge-success' : 'badge-warning'}`}>{paper.status}</span>
-                      <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>Open</button>
-                      <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -810,13 +1092,40 @@ function PaperUpload() {
             <button className="btn btn-secondary" onClick={() => setSelectedPaper(null)}>
               ⬅️ Back to Papers List
             </button>
-            <div className="flex-row">
-              <span className={`badge ${selectedPaper.status === 'published' ? 'badge-success' : 'badge-warning'}`}>
-                {selectedPaper.status}
+            <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center' }}>
+              {selectedPaper.isStarted && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '0.4rem 0.8rem', borderRadius: '8px' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 'bold' }}>🟢 Active Room OTP:</span>
+                  <strong style={{ fontSize: '1.1rem', color: '#34d399', letterSpacing: '2px', fontFamily: 'monospace' }}>{selectedPaper.examOtp || '------'}</strong>
+                  <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }} onClick={() => { navigator.clipboard.writeText(selectedPaper.examOtp || ''); alert(`Room OTP ${selectedPaper.examOtp} copied!`); }}>
+                    Copy
+                  </button>
+                  <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }} onClick={(e) => handleRegeneratePaperOtp(selectedPaper, e)} disabled={loading}>
+                    🔄
+                  </button>
+                </div>
+              )}
+
+              {selectedPaper.isStarted ? (
+                <button className="btn btn-danger" onClick={(e) => handleEndPaperSession(selectedPaper, e)} disabled={loading}>
+                  ⏹️ End Live Session
+                </button>
+              ) : (
+                <button className="btn btn-primary" style={{ background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={(e) => handleStartPaperSession(selectedPaper, e)} disabled={loading}>
+                  ▶️ Start Session &amp; Generate OTP
+                </button>
+              )}
+
+              <span className={`badge ${selectedPaper.status === 'published' && selectedPaper.isVisible !== false && !selectedPaper.isHidden ? 'badge-success' : 'badge-warning'}`} style={!(selectedPaper.status === 'published' && selectedPaper.isVisible !== false && !selectedPaper.isHidden) ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
+                {selectedPaper.status === 'published' && selectedPaper.isVisible !== false && !selectedPaper.isHidden ? '👁️ Visible in App' : '🔒 Hidden from App'}
               </span>
-              {selectedPaper.status === 'draft' && (
+              {selectedPaper.status === 'published' && selectedPaper.isVisible !== false && !selectedPaper.isHidden ? (
+                <button className="btn btn-secondary" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }} onClick={(e) => handleTogglePaperVisibility(selectedPaper, e)} disabled={loading}>
+                  🔒 Hide from App
+                </button>
+              ) : (
                 <button className="btn btn-primary pulse-primary" onClick={handlePublishPaper} disabled={loading}>
-                  {loading ? 'Publishing...' : '📢 Publish Exam Paper'}
+                  {loading ? 'Publishing...' : '📢 Publish & Make Visible'}
                 </button>
               )}
             </div>

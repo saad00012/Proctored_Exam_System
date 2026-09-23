@@ -162,7 +162,7 @@ function UserManagement({ user }) {
         email: newEmail.trim().toLowerCase(),
         password: newPassword,
         role: createRole,
-        department: newDept,
+        department: createRole === 'admin' ? 'Administration' : newDept,
         semester: createRole === 'student' ? newSem : 'N/A',
         prnNumber: createRole === 'student' ? (newPrn.trim().toUpperCase() || 'N/A') : 'N/A',
         phoneNumber: newPhone
@@ -183,7 +183,7 @@ function UserManagement({ user }) {
         throw new Error(data.error || 'Failed to create user');
       }
 
-      showToast(`${createRole === 'teacher' ? 'Teacher' : 'Student'} created successfully!`, 'success');
+      showToast(`${createRole === 'admin' ? 'Admin' : createRole === 'teacher' ? 'Teacher' : 'Student'} created successfully!`, 'success');
       setShowCreateModal(false);
       // Reset form
       setNewName('');
@@ -571,7 +571,7 @@ function UserManagement({ user }) {
               <button 
                 type="button"
                 className={`btn ${createRole === 'teacher' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1, padding: '0.4rem' }}
+                style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
                 onClick={() => setCreateRole('teacher')}
               >
                 Teacher
@@ -579,10 +579,18 @@ function UserManagement({ user }) {
               <button 
                 type="button"
                 className={`btn ${createRole === 'student' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1, padding: '0.4rem' }}
+                style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
                 onClick={() => setCreateRole('student')}
               >
                 Student
+              </button>
+              <button 
+                type="button"
+                className={`btn ${createRole === 'admin' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
+                onClick={() => setCreateRole('admin')}
+              >
+                Admin
               </button>
             </div>
 
@@ -604,7 +612,7 @@ function UserManagement({ user }) {
                 <input 
                   type="email" 
                   className="input-field" 
-                  placeholder="e.g. ramesh@dnyanshree.edu.in" 
+                  placeholder={createRole === 'admin' ? 'e.g. admin@dnyanshree.edu.in' : 'e.g. ramesh@dnyanshree.edu.in'} 
                   value={newEmail} 
                   onChange={(e) => setNewEmail(e.target.value)} 
                   required
@@ -623,18 +631,31 @@ function UserManagement({ user }) {
                 />
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Department</label>
-                <select 
-                  className="input-field"
-                  value={newDept}
-                  onChange={(e) => setNewDept(e.target.value)}
-                >
-                  {departments.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
+              {createRole === 'admin' ? (
+                <div style={{
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  background: 'rgba(79, 70, 229, 0.1)',
+                  border: '1px solid rgba(79, 70, 229, 0.25)',
+                  fontSize: '0.82rem',
+                  color: 'var(--primary)'
+                }}>
+                  👑 <strong>Super Admin Scope:</strong> College Administration (No course/semester required)
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Department</label>
+                  <select 
+                    className="input-field"
+                    value={newDept}
+                    onChange={(e) => setNewDept(e.target.value)}
+                  >
+                    {departments.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {createRole === 'student' && (
                 <>
