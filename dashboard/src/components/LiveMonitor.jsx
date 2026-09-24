@@ -516,6 +516,36 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                              student.latestAttempt.status === 'exited_on_violation' ? 'Violation Locked Out' :
                              student.latestAttempt.status}
                           </span>
+
+                          {student.latestAttempt.status === 'started' && (() => {
+                            const lastBeatMs = parseTimestampToMs(student.latestAttempt.lastHeartbeatAt);
+                            const isBeatStale = lastBeatMs > 0 && (Date.now() - lastBeatMs) > 35000;
+                            const pendingCount = student.latestAttempt.pendingSyncCount || 0;
+                            const latency = student.latestAttempt.latencyMs;
+
+                            if (isBeatStale) {
+                              return (
+                                <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  📡 Network Lost ({Math.round((Date.now() - lastBeatMs) / 1000)}s)
+                                </span>
+                              );
+                            }
+                            if (pendingCount > 0) {
+                              return (
+                                <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  ☁️ {pendingCount} syncing
+                                </span>
+                              );
+                            }
+                            if (latency !== undefined && latency > 0) {
+                              return (
+                                <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  📶 {latency}ms
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>

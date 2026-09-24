@@ -377,9 +377,90 @@ router.post('/submit-answer', verifyToken, async (req, res) => {
   }
 });
 
-// 3. Heartbeat
+// 2.5. Batch Sync Answers (Offline Resilience & Queue Replay)
+router.post('/sync-batch-answers', verifyToken, async (req, res) => {
+  const { paperId, answers } = req.body;
+  if (!paperId || !Array.isArray(answers)) {
+    return res.status(400).json({ error: 'Paper ID and answers array are required.' });
+  }
+
+  const studentId = req.user.uid;
+  const attemptId = `${studentId}_${paperId}`;
+
+  try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+
+    let syncedCount = 0;
+    let returnRemaining = 0;
+
+    await db.runTransaction(async (transaction) => {
+      const attemptRef = db.collection('exam_attempts').doc(attemptId);
+      const attemptDoc = await transaction.get(attemptRef);
+      if (!attemptDoc.exists) {
+        throw new Error('Active exam attempt not found.');
+      }
+      const attempt = attemptDoc.data();
+      if (attempt.status !== 'started') {
+        throw new Error(`Cannot sync answers. Exam session status is currently: ${attempt.status}`);
+      }
+
+      const paperDoc = await transaction.get(db.collection('papers').doc(paperId));
+      let paperDuration = 2700;
+      if (paperDoc.exists && paperDoc.data().durationMinutes) {
+        paperDuration = parseInt(paperDoc.data().durationMinutes) * 60;
+      }
+
+      const existingAnswers = attempt.answers || {};
+      answers.forEach(item => {
+        if (item.questionId && item.selectedOptionIndex !== undefined) {
+          existingAnswers[item.questionId] = item.selectedOptionIndex;
+          syncedCount++;
+        }
+      });
+
+      const startedAt = new Date(attempt.startedAt).getTime();
+      const now = Date.now();
+      const sessionElapsed = Math.round((now - startedAt) / 1000);
+      const newElapsedTime = (attempt.elapsedTime || 0) + sessionElapsed;
+      const currentLimit = attempt.overrideTimeSeconds > 0 ? attempt.overrideTimeSeconds : paperDuration;
+      const remaining = Math.max(0, currentLimit - sessionElapsed);
+      returnRemaining = remaining;
+
+      transaction.update(attemptRef, {
+        answers: existingAnswers,
+        startedAt: new Date().toISOString(),
+        elapsedTime: newElapsedTime,
+        overrideTimeSeconds: remaining,
+        lastSyncAt: new Date().toISOString(),
+        pendingSyncCount: 0
+      });
+    });
+
+    res.json({
+      message: 'Batch answers synced successfully',
+      sessionId: attemptId,
+      syncedCount,
+      remainingTimeSeconds: returnRemaining
+    });
+  } catch (error) {
+    console.error('Error in /sync-batch-answers:', error);
+    if (error.message.includes('not found') || error.message.includes('Cannot sync answers')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to sync answers: ' + error.message });
+  }
+});
+
+// Ping Endpoint for Latency Measurement
+router.get('/ping', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// 3. Heartbeat (with Network Telemetry)
 router.post('/heartbeat', verifyToken, async (req, res) => {
-  const { paperId } = req.body;
+  const { paperId, pendingSyncCount, networkLatencyMs } = req.body;
   if (!paperId) {
     return res.status(400).json({ error: 'Paper ID is required.' });
   }
@@ -420,8 +501,16 @@ router.post('/heartbeat', verifyToken, async (req, res) => {
       const currentLimit = attempt.overrideTimeSeconds > 0 ? attempt.overrideTimeSeconds : paperDuration;
       const finalRemainingSeconds = Math.max(0, currentLimit - sessionElapsed);
 
+      const telemetryUpdate = {
+        lastHeartbeatAt: new Date().toISOString(),
+        networkStatus: (networkLatencyMs !== undefined && networkLatencyMs > 400) ? 'degraded' : 'online',
+        ...(networkLatencyMs !== undefined ? { latencyMs: networkLatencyMs } : {}),
+        ...(pendingSyncCount !== undefined ? { pendingSyncCount } : {})
+      };
+
       if (finalRemainingSeconds <= 0) {
         transaction.update(attemptRef, {
+          ...telemetryUpdate,
           status: 'submitted',
           elapsedTime: (attempt.elapsedTime || 0) + currentLimit,
           overrideTimeSeconds: 0,
@@ -431,6 +520,7 @@ router.post('/heartbeat', verifyToken, async (req, res) => {
         returnRemaining = 0;
       } else {
         transaction.update(attemptRef, {
+          ...telemetryUpdate,
           startedAt: new Date().toISOString(),
           elapsedTime: (attempt.elapsedTime || 0) + sessionElapsed,
           overrideTimeSeconds: finalRemainingSeconds
