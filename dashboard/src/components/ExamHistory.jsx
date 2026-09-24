@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { exportStyledExcelGradeSheet, printCollegeGradeSheet } from '../utils/gradeSheetExporter';
 
 function ExamHistory({ user }) {
   const { exams, papers, questions, attempts, students } = useApp();
@@ -422,16 +423,38 @@ function ExamHistory({ user }) {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => exportStyledExcelGradeSheet(exam, user)}
+                      disabled={exam.participants.length === 0}
+                      style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+                      title="Download styled official college grade sheet (.xlsx)"
+                    >
+                      📗 Official Excel
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => printCollegeGradeSheet(exam, user)}
+                      disabled={exam.participants.length === 0}
+                      style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+                      title="Print or Save as Official College PDF Report"
+                    >
+                      🖨️ PDF / Print
+                    </button>
+
                     <button
                       type="button"
                       className="btn btn-secondary"
                       onClick={() => handleExportCSV(exam)}
                       disabled={exam.participants.length === 0}
-                      style={{ padding: '0.45rem 1rem', fontSize: '0.82rem', gap: '0.35rem' }}
+                      style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem' }}
                       title="Download results as CSV"
                     >
-                      📥 Export CSV
+                      📥 CSV
                     </button>
 
                     <button
@@ -441,9 +464,9 @@ function ExamHistory({ user }) {
                         setExpandedExamId(isExpanded ? null : exam.subject);
                         setStudentSearchQuery('');
                       }}
-                      style={{ padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
+                      style={{ padding: '0.45rem 1.15rem', fontSize: '0.82rem' }}
                     >
-                      {isExpanded ? '▲ Hide Scorecard' : `👁️ View Results (${exam.participants.length})`}
+                      {isExpanded ? '▲ Hide' : `👁️ View (${exam.participants.length})`}
                     </button>
                   </div>
                 </div>
