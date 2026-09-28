@@ -156,23 +156,31 @@ function PaperUpload({ user }) {
     }
   }, [selectedPaper]);
 
-  // Permission helper: Super Admin has full access; Teachers can only access papers they created
+  // Permission helper: Super Admin has full access; Teachers can only access papers they created or in their teaching branches
   const canModifyExam = (exam) => {
     if (isSuperAdmin) return true;
     if (!exam) return false;
+    const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
+      ? user.departments
+      : (user?.department ? [user.department] : []);
+
     return (exam.createdById && exam.createdById === user?.uid) ||
            (!exam.createdById && exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
            (!exam.createdById && !exam.createdByEmail && exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-           (!exam.createdById && !exam.createdByEmail && !exam.createdBy && exam.department === user?.department);
+           (!exam.createdById && !exam.createdByEmail && !exam.createdBy && teacherDepts.includes(exam.department));
   };
 
   const canModifyPaper = (paper) => {
     if (isSuperAdmin) return true;
     if (!paper) return false;
+    const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
+      ? user.departments
+      : (user?.department ? [user.department] : []);
+
     return (paper.createdById && paper.createdById === user?.uid) ||
            (!paper.createdById && paper.createdByEmail && paper.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
            (!paper.createdById && !paper.createdByEmail && paper.createdBy && paper.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-           (!paper.createdById && !paper.createdByEmail && !paper.createdBy && paper.department === user?.department);
+           (!paper.createdById && !paper.createdByEmail && !paper.createdBy && teacherDepts.includes(paper.department));
   };
 
   // Distinct creators list for Super Admin dropdown
@@ -834,7 +842,7 @@ function PaperUpload({ user }) {
             <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 1rem', background: 'rgba(99, 102, 241, 0.06)', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.18)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
                 <span>👨‍🏫</span>
-                <span>Logged in as <strong>{user?.name || 'Faculty'}</strong> ({user?.department || 'Faculty Department'}) — <em>Showing question papers created by you ({filteredExams.length})</em></span>
+                <span>Logged in as <strong>{user?.name || 'Faculty'}</strong> ({Array.isArray(user?.departments) && user.departments.length > 0 ? user.departments.join(', ') : (user?.department || 'Faculty Department')}) — <em>Showing question papers created by you ({filteredExams.length})</em></span>
               </div>
             </div>
           )}

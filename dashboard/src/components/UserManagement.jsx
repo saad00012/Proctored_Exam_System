@@ -37,8 +37,27 @@ function UserManagement({ user }) {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newDept, setNewDept] = useState(departments[0] || 'Computer Science & Engineering');
+  const [newDepts, setNewDepts] = useState([departments[0] || 'Computer Science & Engineering']);
   const [newSem, setNewSem] = useState('Semester 7');
   const [newPhone, setNewPhone] = useState('');
+
+  // Sync newDepts when departments load
+  useEffect(() => {
+    if (departments.length > 0 && (!newDepts || newDepts.length === 0)) {
+      setNewDepts([departments[0]]);
+      setNewDept(departments[0]);
+    }
+  }, [departments]);
+
+  const toggleNewDept = (dept) => {
+    if (newDepts.includes(dept)) {
+      if (newDepts.length > 1) {
+        setNewDepts(newDepts.filter(d => d !== dept));
+      }
+    } else {
+      setNewDepts([...newDepts, dept]);
+    }
+  };
 
   // Edit User modal state
   const [editUser, setEditUser] = useState(null);
@@ -150,12 +169,14 @@ function UserManagement({ user }) {
 
     setActionLoading(true);
     try {
+      const assignedDepts = createRole === 'teacher' ? newDepts : (createRole === 'admin' ? ['Administration'] : [newDept]);
       const payload = {
         name: newName,
         email: newEmail.trim().toLowerCase(),
         password: newPassword,
         role: createRole,
-        department: createRole === 'admin' ? 'Administration' : newDept,
+        department: createRole === 'admin' ? 'Administration' : (createRole === 'teacher' ? (newDepts[0] || 'Unassigned') : newDept),
+        departments: assignedDepts,
         semester: createRole === 'student' ? newSem : 'N/A',
         prnNumber: createRole === 'student' ? (newPrn.trim().toUpperCase() || 'N/A') : 'N/A',
         phoneNumber: newPhone
@@ -184,6 +205,7 @@ function UserManagement({ user }) {
       setNewEmail('');
       setNewPassword('');
       setNewPhone('');
+      setNewDepts([departments[0] || 'Computer Science & Engineering']);
     } catch (err) {
       console.error(err);
       showToast(err.message, 'danger');
@@ -202,9 +224,14 @@ function UserManagement({ user }) {
 
     setActionLoading(true);
     try {
+      const editDepts = Array.isArray(editUser.departments) && editUser.departments.length > 0
+        ? editUser.departments
+        : (editUser.department ? [editUser.department] : []);
+
       const payload = {
         name: editUser.name,
-        department: editUser.department,
+        department: editUser.department || editDepts[0] || 'Unassigned',
+        departments: editUser.role === 'teacher' ? editDepts : [editUser.department || 'Unassigned'],
         role: editUser.role,
         email: editUser.email,
         semester: editUser.role === 'student' ? editUser.semester : 'N/A',
@@ -321,7 +348,10 @@ function UserManagement({ user }) {
     const matchesSearch =
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDept = selectedDept === 'All' || t.department === selectedDept;
+    const teacherDepts = Array.isArray(t.departments) && t.departments.length > 0
+      ? t.departments
+      : (t.department ? [t.department] : []);
+    const matchesDept = selectedDept === 'All' || teacherDepts.includes(selectedDept) || t.department === selectedDept;
     return matchesSearch && matchesDept;
   });
 
@@ -503,7 +533,11 @@ function UserManagement({ user }) {
                       <td style={{ padding: '1rem 1.5rem', fontWeight: 500 }}>{t.name}</td>
                       <td style={{ padding: '1rem 1.5rem', color: 'var(--text-secondary)' }}>{t.email}</td>
                       <td style={{ padding: '1rem 1.5rem' }}>
-                        <span className="badge badge-info" style={{ fontSize: '0.75rem' }}>{t.department}</span>
+                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          {(Array.isArray(t.departments) && t.departments.length > 0 ? t.departments : (t.department ? [t.department] : ['Unassigned'])).map(d => (
+                            <span key={d} className="badge badge-info" style={{ fontSize: '0.72rem' }}>{d}</span>
+                          ))}
+                        </div>
                       </td>
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -635,6 +669,27 @@ function UserManagement({ user }) {
                 }}>
                   👑 <strong>Super Admin Scope:</strong> College Administration (No course/semester required)
                 </div>
+              ) : createRole === 'teacher' ? (
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+                    Assigned Teaching Branch(es):
+                  </label>
+                  <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '0 0 0.4rem 0' }}>
+                    Select all academic departments this faculty member teaches:
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '140px', overflowY: 'auto', padding: '0.5rem', background: 'rgba(0,0,0,0.12)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    {departments.map(d => (
+                      <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={newDepts.includes(d)}
+                          onChange={() => toggleNewDept(d)}
+                        />
+                        <span>{d}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <div>
                   <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Department</label>
@@ -746,18 +801,56 @@ function UserManagement({ user }) {
                 </div>
               )}
 
-              <div>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Department</label>
-                <select 
-                  className="input-field"
-                  value={editUser.department}
-                  onChange={(e) => setEditUser({ ...editUser, department: e.target.value })}
-                >
-                  {departments.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
+              {editUser.role === 'teacher' ? (
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+                    Assigned Teaching Branch(es):
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '140px', overflowY: 'auto', padding: '0.5rem', background: 'rgba(0,0,0,0.12)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    {departments.map(d => {
+                      const current = Array.isArray(editUser.departments) && editUser.departments.length > 0
+                        ? editUser.departments
+                        : (editUser.department ? [editUser.department] : []);
+                      const isChecked = current.includes(d);
+                      return (
+                        <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              let updated;
+                              if (isChecked) {
+                                updated = current.length > 1 ? current.filter(x => x !== d) : current;
+                              } else {
+                                updated = [...current, d];
+                              }
+                              setEditUser({
+                                ...editUser,
+                                departments: updated,
+                                department: updated[0] || editUser.department
+                              });
+                            }}
+                          />
+                          <span>{d}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Department</label>
+                  <select 
+                    className="input-field"
+                    value={editUser.department}
+                    onChange={(e) => setEditUser({ ...editUser, department: e.target.value })}
+                  >
+                    {departments.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {editUser.role === 'student' && (
                 <>

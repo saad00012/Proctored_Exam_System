@@ -44,7 +44,7 @@ router.put('/users/:uid', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: Insufficient privileges. You cannot edit other users profiles.' });
     }
 
-    const { name, department, role, email, semester, phoneNumber, prnNumber, preferences } = req.body;
+    const { name, department, departments, role, email, semester, phoneNumber, prnNumber, preferences } = req.body;
 
     const userRef = db.collection('users').doc(uid);
     const userDoc = await userRef.get();
@@ -56,6 +56,7 @@ router.put('/users/:uid', verifyToken, async (req, res) => {
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (department !== undefined) updates.department = department;
+    if (departments !== undefined) updates.departments = Array.isArray(departments) ? departments : [departments];
     if (role !== undefined && isUserAdmin) updates.role = role;
     if (email !== undefined && isUserAdmin) updates.email = email;
     if (semester !== undefined) updates.semester = semester;
@@ -91,7 +92,7 @@ router.post('/create-user', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: Insufficient privileges. Only administrators can create users.' });
     }
 
-    const { name, email, password, department, role, semester, phoneNumber, prnNumber } = req.body;
+    const { name, email, password, department, departments, role, semester, phoneNumber, prnNumber } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
@@ -109,13 +110,18 @@ router.post('/create-user', verifyToken, async (req, res) => {
 
     const uid = authUser.uid;
 
+    const assignedDepts = Array.isArray(departments) && departments.length > 0
+      ? departments
+      : (department ? [department] : ['Unassigned']);
+
     // Write Firestore profile
     const userProfile = {
       uid,
       name,
       email,
-      role: role === 'student' ? 'student' : 'teacher',
-      department: department || 'Unassigned',
+      role: role === 'student' ? 'student' : (role === 'admin' ? 'superadmin' : 'teacher'),
+      department: department || assignedDepts[0] || 'Unassigned',
+      departments: assignedDepts,
       semester: semester || 'N/A',
       prnNumber: (prnNumber || 'N/A').toUpperCase(),
       phoneNumber: phoneNumber || '',

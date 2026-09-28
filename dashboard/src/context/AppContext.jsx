@@ -136,6 +136,7 @@ export function AppProvider({ children }) {
         let userRole = 'teacher';
         let userName = firebaseUser.displayName || 'Teacher';
         let userDept = 'Computer Science & Engineering';
+        let userDepts = ['Computer Science & Engineering'];
 
         try {
           if (db) {
@@ -146,6 +147,11 @@ export function AppProvider({ children }) {
               userRole = data.role || 'teacher';
               userName = data.name || userName;
               userDept = data.department || userDept;
+              if (Array.isArray(data.departments) && data.departments.length > 0) {
+                userDepts = data.departments;
+              } else if (data.department) {
+                userDepts = [data.department];
+              }
               if (userRole === 'student') {
                 await signOut(auth);
                 setUser(null);
@@ -164,12 +170,14 @@ export function AppProvider({ children }) {
                 name: userName,
                 role: autoRole,
                 department: autoDept,
+                departments: [autoDept],
                 semester: 'N/A',
                 prnNumber: 'N/A',
                 createdAt: new Date().toISOString()
               }, { merge: true });
               userRole = autoRole;
               userDept = autoDept;
+              userDepts = [autoDept];
             }
           }
         } catch (e) {
@@ -186,6 +194,7 @@ export function AppProvider({ children }) {
           name: userName,
           role: finalRole,
           department: userDept,
+          departments: userDepts,
           token
         });
       } else {
@@ -207,7 +216,10 @@ export function AppProvider({ children }) {
       const teacherList = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        const item = { id: docSnap.id, uid: docSnap.id, ...data };
+        const depts = Array.isArray(data.departments) && data.departments.length > 0
+          ? data.departments
+          : (data.department ? [data.department] : []);
+        const item = { id: docSnap.id, uid: docSnap.id, departments: depts, ...data };
         if (data.role === 'teacher') {
           teacherList.push(item);
         } else {

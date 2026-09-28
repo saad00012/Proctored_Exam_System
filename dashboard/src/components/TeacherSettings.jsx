@@ -11,6 +11,7 @@ function TeacherSettings({ user }) {
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [department, setDepartment] = useState(user?.department || departments[0] || 'AI & DS Engineering');
+  const [teacherDepts, setTeacherDepts] = useState(user?.departments || [user?.department || departments[0] || 'AI & DS Engineering']);
   const [phone, setPhone] = useState('');
   const [defaultDuration, setDefaultDuration] = useState('45');
   const [defaultSemester, setDefaultSemester] = useState('Semester 7');
@@ -68,7 +69,12 @@ function TeacherSettings({ user }) {
           const data = userDocSnap.data();
           setName(data.name || user.name || '');
           setEmail(data.email || user.email || '');
-          setDepartment(data.department || 'AI & DS Engineering');
+          const primaryDept = data.department || 'AI & DS Engineering';
+          setDepartment(primaryDept);
+          const depts = Array.isArray(data.departments) && data.departments.length > 0
+            ? data.departments
+            : [primaryDept];
+          setTeacherDepts(depts);
           setPhone(data.phoneNumber || '');
           setCreatedAt(data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Active Member');
           
@@ -106,7 +112,8 @@ function TeacherSettings({ user }) {
         },
         body: JSON.stringify({
           name: name.trim(),
-          department: department,
+          department: department || teacherDepts[0],
+          departments: teacherDepts,
           phoneNumber: phone.trim(),
           preferences: {
             defaultDuration: defaultDuration,
@@ -305,13 +312,56 @@ function TeacherSettings({ user }) {
               <select
                 className="input-field"
                 value={department}
-                onChange={(e) => setDepartment(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDepartment(val);
+                  if (!teacherDepts.includes(val)) {
+                    setTeacherDepts([...teacherDepts, val]);
+                  }
+                }}
                 disabled={loading}
               >
                 {departments.map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
+                All Teaching Branch(es) / Departments:
+              </label>
+              <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '0 0 0.4rem 0' }}>
+                Check all branches where you teach or author question papers:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.6rem 0.8rem', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid var(--border-color)', maxHeight: '160px', overflowY: 'auto' }}>
+                {departments.map((d) => {
+                  const isChecked = teacherDepts.includes(d);
+                  return (
+                    <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) {
+                            if (teacherDepts.length > 1) {
+                              const updated = teacherDepts.filter(x => x !== d);
+                              setTeacherDepts(updated);
+                              if (department === d) {
+                                setDepartment(updated[0]);
+                              }
+                            }
+                          } else {
+                            setTeacherDepts([...teacherDepts, d]);
+                          }
+                        }}
+                        disabled={loading}
+                      />
+                      <span>{d} {d === department ? '(Primary)' : ''}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
             <div>
