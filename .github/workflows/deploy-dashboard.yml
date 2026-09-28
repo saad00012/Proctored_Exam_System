@@ -34,12 +34,20 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: npm run build
 
+      - name: 🧹 Prepare FTP Server Host
+        id: ftp_host
+        run: |
+          RAW_SERVER="${{ secrets.HOSTINGER_FTP_SERVER }}"
+          CLEAN_SERVER=$(echo "$RAW_SERVER" | sed -e 's|^ftp://||' -e 's|^ftps://||' -e 's|/.*||')
+          echo "server=$CLEAN_SERVER" >> $GITHUB_OUTPUT
+
       - name: 🚀 Deploy to Hostinger via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          server: ${{ steps.ftp_host.outputs.server }}
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          port: 21
           local-dir: ./dashboard/dist/
           server-dir: ./public_html/
           dangerous-clean-slate: false
