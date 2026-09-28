@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, doc, setDoc, updateDoc, addDoc, query, where, onSnapshot, deleteDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db, storage, auth } from '../firebase';
 import { compressImageToBase64 } from '../utils/imageCompressor';
 import ExamImport from './ExamImport';
 import QuestionBank from './QuestionBank';
 import { useApp } from '../context/AppContext';
+import API_BASE_URL from '../config';
 
 
 function PaperUpload({ user }) {
-  const { role, departments = [] } = useApp();
+  const { role, departments = [], getAuthToken } = useApp();
   const isSuperAdmin = role === 'superadmin' || role === 'admin' || user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
 
   const formatScheduleDate = (dateStr) => {
@@ -352,21 +353,49 @@ function PaperUpload({ user }) {
       alert("Permission Denied: You can only start exam sessions for exams that you created.");
       return;
     }
+    const examPapers = papers.filter(p => p.examId === exam.id);
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     setLoading(true);
     try {
-      const token = await user.getIdToken(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/papers/${exam.id}/start`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ isExam: true, otp })
+      // 1. Directly update Firestore so session is immediately active and published
+      await updateDoc(doc(db, 'exams', exam.id), {
+        isStarted: true,
+        examOtp: otp,
+        sessionStartedAt: new Date().toISOString(),
+        status: 'published',
+        isVisible: true,
+        isHidden: false
       });
-      if (!res.ok) {
-        throw new Error('Backend failed to start exam session');
+      if (examPapers.length > 0) {
+        await Promise.all(examPapers.map(p =>
+          updateDoc(doc(db, 'papers', p.id), {
+            isStarted: true,
+            examOtp: otp,
+            sessionStartedAt: new Date().toISOString(),
+            status: 'published',
+            isVisible: true,
+            isHidden: false
+          })
+        ));
       }
+
+      // 2. Dispatch FCM notification via backend (best-effort, non-blocking)
+      try {
+        const token = getAuthToken ? await getAuthToken() : (auth.currentUser ? await auth.currentUser.getIdToken(true) : '');
+        if (token && API_BASE_URL) {
+          fetch(`${API_BASE_URL}/papers/${exam.id}/start`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ isExam: true, otp })
+          }).catch(e => console.warn('Background FCM notify error:', e));
+        }
+      } catch (fcmErr) {
+        console.warn('Failed to dispatch FCM trigger:', fcmErr);
+      }
+
       alert(`Exam session started! Room OTP Key is: ${otp}. Disclose this code to students in the examination room.`);
     } catch (err) {
       console.error("Failed to start exam session:", err);
@@ -434,25 +463,40 @@ function PaperUpload({ user }) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     setLoading(true);
     try {
-      const token = await user.getIdToken(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/papers/${paper.id}/start`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ isExam: false, otp })
+      // 1. Directly update Firestore so session is immediately active and published
+      await updateDoc(doc(db, 'papers', paper.id), {
+        isStarted: true,
+        examOtp: otp,
+        sessionStartedAt: new Date().toISOString(),
+        status: 'published',
+        isVisible: true,
+        isHidden: false
       });
-      if (!res.ok) {
-        throw new Error('Backend failed to start paper session');
-      }
-      
-      // Update local state instead of doing another firestore write
+
       if (selectedPaper && selectedPaper.id === paper.id) {
         setSelectedPaper({ ...selectedPaper, isStarted: true, examOtp: otp, status: 'published', isVisible: true, isHidden: false });
       }
+
+      // 2. Dispatch FCM notification via backend (best-effort, non-blocking)
+      try {
+        const token = getAuthToken ? await getAuthToken() : (auth.currentUser ? await auth.currentUser.getIdToken(true) : '');
+        if (token && API_BASE_URL) {
+          fetch(`${API_BASE_URL}/papers/${paper.id}/start`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ isExam: false, otp })
+          }).catch(e => console.warn('Background FCM notify error:', e));
+        }
+      } catch (fcmErr) {
+        console.warn('Failed to dispatch FCM trigger:', fcmErr);
+      }
+
       alert(`Exam session started! Room OTP Key is: ${otp}`);
     } catch (err) {
+      console.error("Failed to start paper session:", err);
       alert("Failed to start session: " + err.message);
     } finally {
       setLoading(false);
