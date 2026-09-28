@@ -382,7 +382,22 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       };
     });
 
+    const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+
     return studentSummaries.filter(student => {
+      if (!isSuperAdmin) {
+        const paperObj = papers.find(p => p.id === student.latestAttempt.paperId);
+        const isMyPaper = paperObj && (
+          paperObj.createdById === user?.uid ||
+          (paperObj.createdByEmail && paperObj.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+          paperObj.createdBy === user?.name ||
+          paperObj.department === user?.department
+        );
+        if (!isMyPaper && student.department !== user?.department) {
+          return false;
+        }
+      }
+
       if (searchQuery) {
         const queryLower = searchQuery.toLowerCase();
         const matchesName = student.studentName.toLowerCase().includes(queryLower);

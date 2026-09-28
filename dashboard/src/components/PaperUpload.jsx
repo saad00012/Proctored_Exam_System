@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, doc, setDoc, updateDoc, addDoc, query, where, onSnapshot, deleteDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
@@ -6,7 +6,9 @@ import { compressImageToBase64 } from '../utils/imageCompressor';
 import ExamImport from './ExamImport';
 
 
-function PaperUpload() {
+function PaperUpload({ user }) {
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+
   const formatScheduleDate = (dateStr) => {
     if (!dateStr) return '—';
     const date = new Date(dateStr);
@@ -19,13 +21,22 @@ function PaperUpload() {
     return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
   };
 
+  const departments = [
+    'AI & DS Engineering',
+    'Computer Science & Engineering',
+    'Electrical & Computer Engineering',
+    'Electronics & Telecommunication Engineering',
+    'Mechanical & Mechatronics Engineering',
+    'Applied Science & Engineering'
+  ];
+
   const [papers, setPapers] = useState([]);
   const [selectedPaper, setSelectedPaper] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [showCreatePaper, setShowCreatePaper] = useState(false);
   const [paperTitle, setPaperTitle] = useState('');
   const [paperSubject, setPaperSubject] = useState('');
-  const [paperDepartment, setPaperDepartment] = useState('AI & DS Engineering');
+  const [paperDepartment, setPaperDepartment] = useState(user?.department || 'Computer Science & Engineering');
   const [loading, setLoading] = useState(false);
   const [showEditPaperInfo, setShowEditPaperInfo] = useState(false);
   const [editPaperTitle, setEditPaperTitle] = useState('');
@@ -38,12 +49,16 @@ function PaperUpload() {
   const [editPaperScheduleStart, setEditPaperScheduleStart] = useState('');
   const [editPaperScheduleEnd, setEditPaperScheduleEnd] = useState('');
 
+  // Super Admin Filters State
+  const [superAdminDeptFilter, setSuperAdminDeptFilter] = useState('All');
+  const [superAdminTeacherFilter, setSuperAdminTeacherFilter] = useState('All');
+
   // Exam-level grouping state
   const [exams, setExams] = useState([]);
   const [showCreateExam, setShowCreateExam] = useState(false);
   const [examName, setExamName] = useState('');
   const [examSubject, setExamSubject] = useState('');
-  const [examDepartment, setExamDepartment] = useState('AI & DS Engineering');
+  const [examDepartment, setExamDepartment] = useState(user?.department || 'Computer Science & Engineering');
   const [examSemester, setExamSemester] = useState('Semester 7');
   const [examDuration, setExamDuration] = useState('');
   const [examScheduleStart, setExamScheduleStart] = useState('');
@@ -60,6 +75,14 @@ function PaperUpload() {
   const [editExamScheduleEnd, setEditExamScheduleEnd] = useState('');
   const [expandedExams, setExpandedExams] = useState({});
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // Sync default department when user profile loads
+  useEffect(() => {
+    if (user?.department && user.department !== 'Unassigned' && user.department !== 'Administration') {
+      setExamDepartment(user.department);
+      setPaperDepartment(user.department);
+    }
+  }, [user]);
 
   // New Question Form State
   const [questionText, setQuestionText] = useState('');
@@ -140,6 +163,62 @@ function PaperUpload() {
     }
   }, [selectedPaper]);
 
+  // Permission helper: Super Admin has full access; Teachers can only access papers they created
+  const canModifyExam = (exam) => {
+    if (isSuperAdmin) return true;
+    if (!exam) return false;
+    return (exam.createdById && exam.createdById === user?.uid) ||
+           (!exam.createdById && exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+           (!exam.createdById && !exam.createdByEmail && exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
+           (!exam.createdById && !exam.createdByEmail && !exam.createdBy && exam.department === user?.department);
+  };
+
+  const canModifyPaper = (paper) => {
+    if (isSuperAdmin) return true;
+    if (!paper) return false;
+    return (paper.createdById && paper.createdById === user?.uid) ||
+           (!paper.createdById && paper.createdByEmail && paper.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+           (!paper.createdById && !paper.createdByEmail && paper.createdBy && paper.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
+           (!paper.createdById && !paper.createdByEmail && !paper.createdBy && paper.department === user?.department);
+  };
+
+  // Distinct creators list for Super Admin dropdown
+  const uniqueCreators = useMemo(() => {
+    const map = new Map();
+    exams.forEach(ex => {
+      const key = ex.createdById || ex.createdByEmail || ex.createdBy;
+      if (key && !map.has(key)) {
+        map.set(key, {
+          id: key,
+          name: ex.createdBy || ex.createdByEmail || 'Faculty Creator',
+          email: ex.createdByEmail || '',
+          dept: ex.department || ''
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [exams]);
+
+  // Filtered exams according to role and active filters
+  const filteredExams = useMemo(() => {
+    return exams.filter(exam => {
+      if (isSuperAdmin) {
+        if (superAdminDeptFilter !== 'All' && exam.department !== superAdminDeptFilter) {
+          return false;
+        }
+        if (superAdminTeacherFilter !== 'All') {
+          const match = exam.createdById === superAdminTeacherFilter ||
+                        exam.createdByEmail === superAdminTeacherFilter ||
+                        exam.createdBy === superAdminTeacherFilter;
+          if (!match) return false;
+        }
+        return true;
+      } else {
+        return canModifyExam(exam);
+      }
+    });
+  }, [exams, isSuperAdmin, superAdminDeptFilter, superAdminTeacherFilter, user]);
+
   const handleCreatePaperSubmit = async (e) => {
     e.preventDefault();
     if (!paperTitle || !paperSubject || !paperDepartment) return;
@@ -153,6 +232,9 @@ function PaperUpload() {
       isVisible: false,
       isHidden: true,
       createdAt: new Date().toISOString(),
+      createdById: user?.uid || null,
+      createdBy: user?.name || user?.email || 'Teacher',
+      createdByEmail: user?.email || null,
       ...(paperDuration && { durationMinutes: parseInt(paperDuration) }),
       ...(paperScheduleStart && { scheduleStart: paperScheduleStart }),
       ...(paperScheduleEnd && { scheduleEnd: paperScheduleEnd })
@@ -162,7 +244,7 @@ function PaperUpload() {
       await addDoc(collection(db, 'papers'), paperData);
       setPaperTitle('');
       setPaperSubject('');
-      setPaperDepartment('');
+      setPaperDepartment(user?.department || 'Computer Science & Engineering');
       setPaperDuration('');
       setPaperScheduleStart('');
       setPaperScheduleEnd('');
@@ -200,6 +282,10 @@ function PaperUpload() {
   };
 
   const handleToggleExamVisibility = async (exam) => {
+    if (!canModifyExam(exam)) {
+      alert("Permission Denied: You can only change visibility for exams that you created.");
+      return;
+    }
     const examPapers = papers.filter(p => p.examId === exam.id);
     const isCurrentlyPublished = (exam.status === 'published' || (examPapers.length > 0 && examPapers.every(p => p.status === 'published'))) && exam.isVisible !== false && !exam.isHidden;
     const nextStatus = isCurrentlyPublished ? 'draft' : 'published';
@@ -230,6 +316,10 @@ function PaperUpload() {
   };
 
   const handleStartExamSession = async (exam) => {
+    if (!canModifyExam(exam)) {
+      alert("Permission Denied: You can only start exam sessions for exams that you created.");
+      return;
+    }
     const examPapers = papers.filter(p => p.examId === exam.id);
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     setLoading(true);
@@ -264,6 +354,10 @@ function PaperUpload() {
   };
 
   const handleEndExamSession = async (exam) => {
+    if (!canModifyExam(exam)) {
+      alert("Permission Denied: You can only end exam sessions for exams that you created.");
+      return;
+    }
     if (!window.confirm("Are you sure you want to end this live exam session? Students who have not entered will no longer be able to start.")) return;
     const examPapers = papers.filter(p => p.examId === exam.id);
     setLoading(true);
@@ -456,9 +550,12 @@ function PaperUpload() {
         status: 'draft',
         isVisible: false,
         isHidden: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        createdById: user?.uid || null,
+        createdBy: user?.name || user?.email || 'Teacher',
+        createdByEmail: user?.email || null
       });
-      setExamName(''); setExamSubject(''); setExamDepartment('AI & DS Engineering'); setExamSemester('Semester 7');
+      setExamName(''); setExamSubject(''); setExamDepartment(user?.department || 'Computer Science & Engineering'); setExamSemester('Semester 7');
       setExamDuration(''); setExamScheduleStart(''); setExamScheduleEnd('');
       setShowCreateExam(false);
     } catch (err) {
@@ -472,6 +569,10 @@ function PaperUpload() {
     if (!newSetTitle.trim()) return;
     const exam = exams.find(ex => ex.id === examId);
     if (!exam) return;
+    if (!canModifyExam(exam)) {
+      alert("Permission Denied: You can only add paper sets to exams that you created.");
+      return;
+    }
     const examIsVisible = exam.status === 'published' && exam.isVisible !== false && !exam.isHidden;
     setLoading(true);
     try {
@@ -480,13 +581,17 @@ function PaperUpload() {
         examId: examId,
         subject: exam.subject,
         department: exam.department,
+        semester: exam.semester || 'Semester 7',
         ...(exam.durationMinutes && { durationMinutes: exam.durationMinutes }),
         ...(exam.scheduleStart && { scheduleStart: exam.scheduleStart }),
         ...(exam.scheduleEnd && { scheduleEnd: exam.scheduleEnd }),
         status: examIsVisible ? 'published' : 'draft',
         isVisible: examIsVisible,
         isHidden: !examIsVisible,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        createdById: exam.createdById || user?.uid || null,
+        createdBy: exam.createdBy || user?.name || user?.email || 'Teacher',
+        createdByEmail: exam.createdByEmail || user?.email || null
       });
       setNewSetTitle('');
       setAddingSetToExamId(null);
@@ -500,6 +605,11 @@ function PaperUpload() {
   const handleUpdateExam = async (e, examId) => {
     e.preventDefault();
     if (!editExamName || !editExamSubject || !editExamDepartment) return;
+    const exam = exams.find(ex => ex.id === examId);
+    if (!canModifyExam(exam)) {
+      alert("Permission Denied: You can only modify exams that you created.");
+      return;
+    }
     setLoading(true);
     try {
       const updatedExamData = {
@@ -537,6 +647,11 @@ function PaperUpload() {
 
   const handleDeleteExam = async (examId, e) => {
     e.stopPropagation();
+    const exam = exams.find(ex => ex.id === examId);
+    if (!canModifyExam(exam)) {
+      alert("Permission Denied: You can only delete exams that you created.");
+      return;
+    }
     const examPapers = papers.filter(p => p.examId === examId);
     if (!window.confirm(`Delete this exam and all ${examPapers.length} paper set(s) + their questions? This cannot be undone.`)) return;
     setLoading(true);
@@ -677,7 +792,58 @@ function PaperUpload() {
 
           {/* Excel Import Modal */}
           {showImportModal && (
-            <ExamImport onClose={() => setShowImportModal(false)} onImported={() => setShowImportModal(false)} />
+            <ExamImport user={user} onClose={() => setShowImportModal(false)} onImported={() => setShowImportModal(false)} />
+          )}
+
+          {/* Super Admin Global Filter Controls */}
+          {isSuperAdmin && (
+            <div className="glass-card" style={{ padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap', background: 'rgba(79, 70, 229, 0.04)', borderColor: 'rgba(79, 70, 229, 0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>🛡️</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>Super Admin Filters:</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '220px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Department:</label>
+                <select
+                  className="input-field"
+                  value={superAdminDeptFilter}
+                  onChange={e => setSuperAdminDeptFilter(e.target.value)}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                >
+                  <option value="All">All Departments ({exams.length})</option>
+                  {departments.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '220px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Faculty Creator:</label>
+                <select
+                  className="input-field"
+                  value={superAdminTeacherFilter}
+                  onChange={e => setSuperAdminTeacherFilter(e.target.value)}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                >
+                  <option value="All">All Faculty / Teachers</option>
+                  {uniqueCreators.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} {c.dept ? `(${c.dept})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                Showing <strong>{filteredExams.length}</strong> of {exams.length} exams
+              </div>
+            </div>
+          )}
+
+          {/* Teacher Scope Info Banner */}
+          {!isSuperAdmin && (
+            <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 1rem', background: 'rgba(99, 102, 241, 0.06)', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.18)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                <span>👨‍🏫</span>
+                <span>Logged in as <strong>{user?.name || 'Faculty'}</strong> ({user?.department || 'Faculty Department'}) — <em>Showing question papers created by you ({filteredExams.length})</em></span>
+              </div>
+            </div>
           )}
 
           {/* Create Exam Form */}
@@ -760,15 +926,41 @@ function PaperUpload() {
             </div>
           )}
 
+          {/* Empty State Banner */}
+          {filteredExams.length === 0 && (
+            <div className="glass-card" style={{ padding: '3.5rem 2rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '2.8rem', marginBottom: '0.75rem' }}>📝</div>
+              <h4 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                {isSuperAdmin ? 'No Question Papers Found Matching Filters' : 'No Question Papers Created Yet'}
+              </h4>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: '520px', margin: '0 auto 1.5rem auto', lineHeight: 1.5 }}>
+                {isSuperAdmin
+                  ? 'Try selecting "All Departments" and "All Faculty" from the filter bar above.'
+                  : `You are currently logged into the ${user?.department || 'Faculty'} console. Papers created by other departments are strictly segregated. Click below to author or import your first question paper.`}
+              </p>
+              {!isSuperAdmin && (
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" onClick={() => { setShowCreateExam(true); setShowCreatePaper(false); }}>
+                    📋 Create Your First Exam
+                  </button>
+                  <button className="btn btn-secondary" style={{ background: 'linear-gradient(135deg,#059669,#065f46)', color: '#fff' }} onClick={() => setShowImportModal(true)}>
+                    📥 Import from Excel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Exam Groups ─────────────────────────────────────────────── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {exams.map(exam => {
+            {filteredExams.map(exam => {
               const examPapers = papers.filter(p => p.examId === exam.id);
               const isExpanded = !!expandedExams[exam.id];
               const isEditingThisExam = editingExamId === exam.id;
               const isExamStarted = exam.isStarted === true;
               const isExamVisible = (exam.status === 'published' || (examPapers.length > 0 && examPapers.every(p => p.status === 'published'))) && exam.isVisible !== false && !exam.isHidden;
               const anyPublished = examPapers.some(p => p.status === 'published' && p.isVisible !== false && !p.isHidden);
+              const canEditThis = canModifyExam(exam);
 
               return (
                 <div key={exam.id} className="glass-card" style={{ padding: '1.5rem' }}>
@@ -790,9 +982,14 @@ function PaperUpload() {
                         <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>
                           {examPapers.length} set{examPapers.length !== 1 ? 's' : ''}
                         </span>
+                        {isSuperAdmin && exam.createdBy && (
+                          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.72rem' }}>
+                            👤 By: {exam.createdBy}
+                          </span>
+                        )}
                       </div>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, paddingLeft: '1.75rem' }}>
-                        📚 {exam.subject} &nbsp;|&nbsp; 🏛️ {exam.department}
+                        📚 {exam.subject} &nbsp;|&nbsp; 🏛️ {exam.department} {exam.semester ? `(${exam.semester})` : ''}
                         {exam.durationMinutes && <> &nbsp;|&nbsp; ⏱️ {exam.durationMinutes} min</>}
                         {exam.scheduleStart && <> &nbsp;|&nbsp; 🗓️ {formatScheduleDate(exam.scheduleStart)} → {formatScheduleDate(exam.scheduleEnd)}</>}
                       </p>
@@ -804,7 +1001,7 @@ function PaperUpload() {
                           className="btn btn-danger"
                           style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', fontWeight: 'bold' }}
                           onClick={(e) => { e.stopPropagation(); handleEndExamSession(exam); }}
-                          disabled={loading}
+                          disabled={loading || !canEditThis}
                         >
                           ⏹️ End Session
                         </button>
@@ -813,7 +1010,7 @@ function PaperUpload() {
                           className="btn btn-primary"
                           style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', background: 'linear-gradient(135deg,#059669,#047857)', fontWeight: 'bold' }}
                           onClick={(e) => { e.stopPropagation(); handleStartExamSession(exam); }}
-                          disabled={loading}
+                          disabled={loading || !canEditThis}
                           title="Start exam session and generate 6-digit room key OTP for students"
                         >
                           ▶️ Start Exam (Generate OTP)
@@ -830,18 +1027,22 @@ function PaperUpload() {
                           border: isExamVisible ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
                         }}
                         onClick={(e) => { e.stopPropagation(); handleToggleExamVisibility(exam); }}
-                        disabled={loading}
+                        disabled={loading || !canEditThis}
                         title={isExamVisible ? 'Hide all sets of this exam from student app' : 'Publish and make all sets visible to students'}
                       >
                         {isExamVisible ? '👁️ Visible' : '🔒 Hidden'}
                       </button>
-                      <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }}
-                        onClick={() => { setEditingExamId(exam.id); setEditExamName(exam.name); setEditExamSubject(exam.subject); setEditExamDepartment(exam.department); setEditExamSemester(exam.semester || 'Semester 7'); setEditExamDuration(exam.durationMinutes || ''); setEditExamScheduleStart(exam.scheduleStart || ''); setEditExamScheduleEnd(exam.scheduleEnd || ''); setExpandedExams(prev => ({ ...prev, [exam.id]: true })); }}>
-                        ✏️ Edit
-                      </button>
-                      <button className="btn btn-danger" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }} onClick={e => handleDeleteExam(exam.id, e)} disabled={loading}>
-                        🗑️
-                      </button>
+                      {canEditThis && (
+                        <>
+                          <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }}
+                            onClick={() => { setEditingExamId(exam.id); setEditExamName(exam.name); setEditExamSubject(exam.subject); setEditExamDepartment(exam.department); setEditExamSemester(exam.semester || 'Semester 7'); setEditExamDuration(exam.durationMinutes || ''); setEditExamScheduleStart(exam.scheduleStart || ''); setEditExamScheduleEnd(exam.scheduleEnd || ''); setExpandedExams(prev => ({ ...prev, [exam.id]: true })); }}>
+                            ✏️ Edit
+                          </button>
+                          <button className="btn btn-danger" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }} onClick={e => handleDeleteExam(exam.id, e)} disabled={loading}>
+                            🗑️
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -981,13 +1182,14 @@ function PaperUpload() {
           </div>
 
           {/* ── Ungrouped / Standalone Papers ──────────────────────────── */}
-          {papers.filter(p => !p.examId).length > 0 && (
+          {papers.filter(p => !p.examId && (isSuperAdmin || canModifyPaper(p))).length > 0 && (
             <div style={{ marginTop: '2rem' }}>
               <h4 style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>📄 Standalone Papers</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {papers.filter(p => !p.examId).map(paper => {
+                {papers.filter(p => !p.examId && (isSuperAdmin || canModifyPaper(p))).map(paper => {
                   const isPaperVisible = paper.status === 'published' && paper.isVisible !== false && !paper.isHidden;
                   const isPaperStarted = paper.isStarted === true;
+                  const canEditPaper = canModifyPaper(paper);
                   return (
                     <div key={paper.id} className="glass-card flex-between" style={{ padding: '1.25rem 1.5rem', cursor: 'pointer' }} onClick={() => setSelectedPaper(paper)}>
                       <div>
@@ -1005,22 +1207,24 @@ function PaperUpload() {
                       </div>
                       <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center' }}>
                         {isPaperStarted ? (
-                          <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleEndPaperSession(paper, e)} disabled={loading}>
+                          <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleEndPaperSession(paper, e)} disabled={loading || !canEditPaper}>
                             ⏹️ End Session
                           </button>
                         ) : (
-                          <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={e => handleStartPaperSession(paper, e)} disabled={loading}>
+                          <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={e => handleStartPaperSession(paper, e)} disabled={loading || !canEditPaper}>
                             ▶️ Start Exam (OTP)
                           </button>
                         )}
                         <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={!isPaperVisible ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
                           {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
                         </span>
-                        <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleTogglePaperVisibility(paper, e)} disabled={loading}>
+                        <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleTogglePaperVisibility(paper, e)} disabled={loading || !canEditPaper}>
                           {isPaperVisible ? '🔒 Hide' : '👁️ Publish'}
                         </button>
                         <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>Open</button>
-                        <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
+                        {canEditPaper && (
+                          <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
+                        )}
                       </div>
                     </div>
                   );

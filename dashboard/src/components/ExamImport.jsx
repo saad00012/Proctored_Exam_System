@@ -13,7 +13,7 @@ const DEPARTMENTS = [
 
 const SET_NAMES = ['Set A', 'Set B', 'Set C', 'Set D'];
 
-function ExamImport({ onClose, onImported }) {
+function ExamImport({ user, onClose, onImported }) {
   const [step, setStep] = useState(1);
   const [parsedData, setParsedData] = useState(null);
   const [errors, setErrors] = useState([]);
@@ -211,22 +211,46 @@ function ExamImport({ onClose, onImported }) {
     setLoading(true); setErrors([]);
     try {
       const examRef = await addDoc(collection(db, 'exams'), {
-        name: parsedData.examName, subject: parsedData.subject, department: parsedData.department, semester: parsedData.semester,
-        durationMinutes: parsedData.durationMinutes, scheduleStart: parsedData.scheduleStart,
-        scheduleEnd: parsedData.scheduleEnd, status: 'draft',
-        createdAt: new Date().toISOString(), importedFrom: 'excel'
+        name: parsedData.examName,
+        subject: parsedData.subject,
+        department: parsedData.department || user?.department || 'Computer Science & Engineering',
+        semester: parsedData.semester || 'Semester 7',
+        durationMinutes: parsedData.durationMinutes,
+        scheduleStart: parsedData.scheduleStart,
+        scheduleEnd: parsedData.scheduleEnd,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        importedFrom: 'excel',
+        createdById: user?.uid || null,
+        createdBy: user?.name || user?.email || 'Teacher',
+        createdByEmail: user?.email || null
       });
+
       for (const setName of SET_NAMES) {
         const qs = parsedData.sets[setName]; if (!qs || qs.length === 0) continue;
         const paperRef = await addDoc(collection(db, 'papers'), {
-          title: setName, examId: examRef.id, subject: parsedData.subject,
-          department: parsedData.department, semester: parsedData.semester, durationMinutes: parsedData.durationMinutes,
-          scheduleStart: parsedData.scheduleStart, scheduleEnd: parsedData.scheduleEnd,
-          status: 'draft', createdAt: new Date().toISOString()
+          title: setName,
+          examId: examRef.id,
+          subject: parsedData.subject,
+          department: parsedData.department || user?.department || 'Computer Science & Engineering',
+          semester: parsedData.semester || 'Semester 7',
+          durationMinutes: parsedData.durationMinutes,
+          scheduleStart: parsedData.scheduleStart,
+          scheduleEnd: parsedData.scheduleEnd,
+          status: 'draft',
+          createdAt: new Date().toISOString(),
+          createdById: user?.uid || null,
+          createdBy: user?.name || user?.email || 'Teacher',
+          createdByEmail: user?.email || null
         });
         await Promise.all(qs.map((q, idx) => addDoc(collection(db, 'questions'), {
-          paperId: paperRef.id, questionText: q.questionText, questionImageUrl: null,
-          options: q.options, correctOptionIndex: q.correctOptionIndex, order: idx, department: parsedData.department
+          paperId: paperRef.id,
+          questionText: q.questionText,
+          questionImageUrl: null,
+          options: q.options,
+          correctOptionIndex: q.correctOptionIndex,
+          order: idx,
+          department: parsedData.department || user?.department || 'Computer Science & Engineering'
         })));
       }
       setStep(3); if (onImported) onImported();

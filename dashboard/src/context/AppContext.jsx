@@ -48,6 +48,7 @@ export function AppProvider({ children }) {
         const token = await firebaseUser.getIdToken();
         let userRole = 'teacher';
         let userName = firebaseUser.displayName || 'Teacher';
+        let userDept = 'Computer Science & Engineering';
 
         try {
           if (db) {
@@ -57,6 +58,7 @@ export function AppProvider({ children }) {
               const data = userDocSnap.data();
               userRole = data.role || 'teacher';
               userName = data.name || userName;
+              userDept = data.department || userDept;
               if (userRole === 'student') {
                 await signOut(auth);
                 setUser(null);
@@ -67,7 +69,7 @@ export function AppProvider({ children }) {
             } else {
               const isAdminEmail = firebaseUser.email?.toLowerCase().startsWith('admin');
               const autoRole = isAdminEmail ? 'superadmin' : 'teacher';
-              const autoDept = isAdminEmail ? 'Administration' : 'Unassigned';
+              const autoDept = isAdminEmail ? 'Administration' : 'Computer Science & Engineering';
 
               await setDoc(userDocRef, {
                 uid: firebaseUser.uid,
@@ -80,6 +82,7 @@ export function AppProvider({ children }) {
                 createdAt: new Date().toISOString()
               }, { merge: true });
               userRole = autoRole;
+              userDept = autoDept;
             }
           }
         } catch (e) {
@@ -95,6 +98,7 @@ export function AppProvider({ children }) {
           email: firebaseUser.email,
           name: userName,
           role: userRole,
+          department: userDept,
           token
         });
       } else {

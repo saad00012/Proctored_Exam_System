@@ -231,8 +231,19 @@ function ExamHistory({ user }) {
     };
   });
 
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+
   // Filter exams
   const filteredExams = conductedExams.filter(exam => {
+    if (!isSuperAdmin) {
+      const isMyExam = (exam.papers && exam.papers.some(p =>
+        p.createdById === user?.uid ||
+        (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+        p.createdBy === user?.name
+      )) || exam.department === user?.department;
+      if (!isMyExam) return false;
+    }
+
     const matchesDept = selectedDept === 'All' || exam.department === selectedDept;
     const matchesSem = selectedSemester === 'All' || exam.semester === selectedSemester;
     const matchesSearch = exam.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||

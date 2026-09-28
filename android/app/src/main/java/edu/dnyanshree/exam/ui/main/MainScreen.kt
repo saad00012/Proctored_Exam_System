@@ -195,7 +195,7 @@ fun MainScreen(
                 }
             }
 
-            val papersQuery = if (studentCourse != "N/A" && studentCourse.isNotEmpty() && studentCourse != "All") {
+            val papersQuery = if (studentCourse.isNotBlank() && studentCourse != "N/A" && studentCourse != "All" && studentCourse != "Unassigned") {
                 firestore.collection("papers")
                     .whereEqualTo("status", "published")
                     .whereEqualTo("department", studentCourse)
@@ -248,7 +248,22 @@ fun MainScreen(
                 val status = doc.getString("status") ?: "published"
                 val isVisible = doc.getBoolean("isVisible") != false
                 val isHidden = doc.getBoolean("isHidden") == true
-                status == "published" && isVisible && !isHidden
+                val docDept = doc.getString("department") ?: ""
+                val docSemester = doc.getString("semester") ?: ""
+
+                val deptMatches = if (studentCourse.isNotBlank() && studentCourse != "N/A" && studentCourse != "All" && studentCourse != "Unassigned") {
+                    docDept.isBlank() || docDept.equals(studentCourse, ignoreCase = true)
+                } else {
+                    true
+                }
+
+                val semMatches = if (studentSemester.isNotBlank() && studentSemester != "N/A" && studentSemester != "All") {
+                    docSemester.isBlank() || docSemester.equals(studentSemester, ignoreCase = true)
+                } else {
+                    true
+                }
+
+                status == "published" && isVisible && !isHidden && deptMatches && semMatches
             }
 
             val papersBySubject = visiblePaperDocs.groupBy { doc ->
