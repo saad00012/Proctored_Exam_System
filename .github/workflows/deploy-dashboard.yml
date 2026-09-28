@@ -49,5 +49,5 @@ jobs:
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           port: 21
           local-dir: ./dashboard/dist/
-          server-dir: ./public_html/
+          server-dir: ./
           dangerous-clean-slate: false
