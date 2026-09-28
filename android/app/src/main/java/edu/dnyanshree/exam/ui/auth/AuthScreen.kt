@@ -441,6 +441,15 @@ private fun handleLogin(
                         user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
                             if (tokenTask.isSuccessful) {
                                 val token = tokenTask.result?.token ?: ""
+                                
+                                // Save FCM token
+                                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                                    .addOnSuccessListener { fcmToken ->
+                                        FirebaseFirestore.getInstance().collection("users").document(user.uid)
+                                            .update("fcmToken", fcmToken)
+                                            .addOnFailureListener { /* silent */ }
+                                    }
+                                
                                 scope.launch {
                                     onLoading(false)
                                     onSuccess()
