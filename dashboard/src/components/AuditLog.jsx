@@ -3,11 +3,23 @@ import { useApp } from '../context/AppContext';
 import API_BASE_URL from '../config';
 
 const AuditLog = () => {
-  const { getAuthToken } = useApp();
+  const { getAuthToken, students = [] } = useApp();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('All');
+
+  const getStudentInfo = (studentId) => {
+    if (!studentId) return { name: '-', prn: '' };
+    const s = students.find((item) => item.uid === studentId || item.id === studentId);
+    if (s) {
+      return {
+        name: s.name || (s.email ? s.email.split('@')[0] : 'Student'),
+        prn: s.prnNumber && s.prnNumber !== 'N/A' ? s.prnNumber : ''
+      };
+    }
+    return { name: studentId, prn: '' };
+  };
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -33,8 +45,13 @@ const AuditLog = () => {
   }, []);
 
   const filteredLogs = logs.filter((log) => {
-    const matchesSearch = (log.teacherName || '').toLowerCase().includes(search.toLowerCase()) || 
-                          (log.studentId || '').toLowerCase().includes(search.toLowerCase());
+    const studentInfo = getStudentInfo(log.studentId);
+    const searchLower = search.toLowerCase();
+    const matchesSearch =
+      (log.teacherName || '').toLowerCase().includes(searchLower) ||
+      (log.studentId || '').toLowerCase().includes(searchLower) ||
+      studentInfo.name.toLowerCase().includes(searchLower) ||
+      studentInfo.prn.toLowerCase().includes(searchLower);
     const matchesAction = actionFilter === 'All' || log.action === actionFilter;
     return matchesSearch && matchesAction;
   });
@@ -69,7 +86,7 @@ const AuditLog = () => {
             <input
               type="text"
               className="input-field"
-              placeholder="Search by teacher or student ID..."
+              placeholder="Search by teacher, student, or PRN..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ flex: 1 }}
@@ -109,7 +126,7 @@ const AuditLog = () => {
                   <th style={{ padding: '0.75rem 1rem' }}>Timestamp</th>
                   <th style={{ padding: '0.75rem 1rem' }}>Action</th>
                   <th style={{ padding: '0.75rem 1rem' }}>Teacher</th>
-                  <th style={{ padding: '0.75rem 1rem' }}>Student ID</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Student</th>
                   <th style={{ padding: '0.75rem 1rem' }}>Subject/Paper</th>
                   <th style={{ padding: '0.75rem 1rem' }}>Details</th>
                 </tr>
@@ -125,11 +142,34 @@ const AuditLog = () => {
                       <td style={{ padding: '0.75rem 1rem' }}>
                         <span className={`badge ${badge}`}>{label}</span>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem' }}>{log.teacherName || '-'}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}>{log.studentId || '-'}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}>{log.subject || '-'}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>
+                        {log.teacherName || log.teacherEmail || '-'}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        {(() => {
+                          const info = getStudentInfo(log.studentId);
+                          return (
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{info.name}</div>
+                              {info.prn && (
+                                <span className="badge badge-neutral" style={{ fontSize: '0.7rem', marginTop: '2px' }}>
+                                  PRN: {info.prn}
+                                </span>
+                              )}
+                              {!info.prn && log.studentId && (
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title={log.studentId}>
+                                  ID: {log.studentId.length > 12 ? `${log.studentId.substring(0, 10)}...` : log.studentId}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
-                        {log.overrideMinutes ? `Override: ${log.overrideMinutes} mins` : log.subject ? `Subject: ${log.subject}` : '-'}
+                        {log.subject || (log.paperId ? (log.paperId.length > 12 ? `${log.paperId.substring(0, 10)}...` : log.paperId) : '-')}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
+                        {log.overrideMinutes ? `Override: ${log.overrideMinutes} mins` : (log.details || log.reason || '-')}
                       </td>
                     </tr>
                   );
