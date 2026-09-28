@@ -403,14 +403,18 @@ function App() {
 
               <div className="stat-card">
                 <div className="flex-between">
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Published Papers</span>
-                  <span className="badge badge-neutral">Catalog</span>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                    {isSuperAdmin ? 'Published Papers' : 'My Question Papers'}
+                  </span>
+                  <span className="badge badge-neutral">
+                    {metrics.totalExams || 0} {metrics.totalExams === 1 ? 'Exam' : 'Exams'}
+                  </span>
                 </div>
                 <div style={{ fontSize: '2rem', fontWeight: 800, color: '#7C3AED', marginTop: '0.5rem' }}>
                   {metrics.totalPapers}
                 </div>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Configured question sets
+                  {metrics.totalExams || 0} {metrics.totalExams === 1 ? 'exam' : 'exams'} ({metrics.totalPapers} question {metrics.totalPapers === 1 ? 'set' : 'sets'})
                 </p>
               </div>
             </div>
