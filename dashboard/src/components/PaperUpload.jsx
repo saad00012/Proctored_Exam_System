@@ -434,14 +434,20 @@ function PaperUpload({ user }) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'papers', paper.id), {
-        isStarted: true,
-        examOtp: otp,
-        sessionStartedAt: new Date().toISOString(),
-        status: 'published',
-        isVisible: true,
-        isHidden: false
+      const token = await user.getIdToken(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/papers/${paper.id}/start`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isExam: false, otp })
       });
+      if (!res.ok) {
+        throw new Error('Backend failed to start paper session');
+      }
+      
+      // Update local state instead of doing another firestore write
       if (selectedPaper && selectedPaper.id === paper.id) {
         setSelectedPaper({ ...selectedPaper, isStarted: true, examOtp: otp, status: 'published', isVisible: true, isHidden: false });
       }
@@ -1506,9 +1512,16 @@ function PaperUpload({ user }) {
             
             {/* Left: Questions List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <h3 style={{ fontSize: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                Questions ({questions.length})
-              </h3>
+              <div className="flex-between" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                <h3 style={{ fontSize: '1.25rem' }}>
+                  Questions ({questions.length})
+                </h3>
+                {selectedPaper.status === 'draft' && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowQuestionBank(true)}>
+                    📖 Import from Bank
+                  </button>
+                )}
+              </div>
               
               {questions.length === 0 ? (
                 <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
@@ -1550,6 +1563,15 @@ function PaperUpload({ user }) {
                             Delete
                           </button>
                         )}
+                        <button 
+                          type="button"
+                          className="btn btn-secondary" 
+                          style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}
+                          onClick={() => handleSaveToBank(q)}
+                          disabled={loading}
+                        >
+                          💾 Save to Bank
+                        </button>
                       </div>
                     </div>
                     
@@ -1734,6 +1756,19 @@ function PaperUpload({ user }) {
           </div>
         </div>
       )}
+      
+      {showQuestionBank && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg-main)' }}>
+            <div className="flex-between" style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+              <h3>Import from Question Bank</h3>
+              <button className="btn btn-secondary" onClick={() => setShowQuestionBank(false)}>Close</button>
+            </div>
+            <QuestionBank onImportQuestion={(bankQ) => handleImportFromBank(bankQ)} />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
