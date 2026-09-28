@@ -623,6 +623,10 @@ fun MainScreen(
             currentTheme = currentTheme,
             context = context,
             onDismiss = { showProfileModal = false },
+            onViewResults = {
+                showResultHistory = true
+                showProfileModal = false
+            },
             onLogout = {
                 showProfileModal = false
                 onLogout()
@@ -1119,6 +1123,7 @@ private fun ProfileSettingsDialog(
     currentTheme: ThemeMode,
     context: Context,
     onDismiss: () -> Unit,
+    onViewResults: () -> Unit,
     onLogout: () -> Unit
 ) {
     AlertDialog(
@@ -1237,6 +1242,16 @@ private fun ProfileSettingsDialog(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                Button(
+                    onClick = onViewResults,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("📊 View My Results", fontWeight = FontWeight.Bold)
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
