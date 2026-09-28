@@ -65,9 +65,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var prn by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var department by remember { mutableStateOf("AI & DS Engineering") }
-    
-    val departments = listOf(
+    val defaultDepartments = listOf(
         "AI & DS Engineering",
         "Computer Science & Engineering",
         "Electrical & Computer Engineering",
@@ -75,6 +73,28 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         "Mechanical & Mechatronics Engineering",
         "Applied Science & Engineering"
     )
+    var departments by remember { mutableStateOf(defaultDepartments) }
+    var department by remember { mutableStateOf(defaultDepartments.first()) }
+    
+    DisposableEffect(Unit) {
+        val listener = FirebaseFirestore.getInstance()
+            .document("settings/departments")
+            .addSnapshotListener { snapshot, error ->
+                if (error == null && snapshot != null && snapshot.exists()) {
+                    val list = snapshot.get("list") as? List<*>
+                    val strList = list?.filterIsInstance<String>()
+                    if (!strList.isNullOrEmpty()) {
+                        departments = strList
+                        if (!strList.contains(department)) {
+                            department = strList.first()
+                        }
+                    }
+                }
+            }
+        onDispose {
+            listener.remove()
+        }
+    }
     
     val semesters = if (department == "Applied Science & Engineering") {
         listOf("Semester 1", "Semester 2")

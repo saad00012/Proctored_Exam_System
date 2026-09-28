@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { exportStyledExcelGradeSheet, printCollegeGradeSheet } from '../utils/gradeSheetExporter';
 
 function ExamHistory({ user }) {
-  const { exams, papers, questions, attempts, students } = useApp();
+  const { exams, papers, questions, attempts, students, departments = [] } = useApp();
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -12,15 +12,7 @@ function ExamHistory({ user }) {
   const [expandedExamId, setExpandedExamId] = useState(null);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
 
-  const departments = [
-    'All',
-    'AI & DS Engineering',
-    'Computer Science & Engineering',
-    'Electrical & Computer Engineering',
-    'Electronics & Telecommunication Engineering',
-    'Mechanical & Mechatronics Engineering',
-    'Applied Science & Engineering'
-  ];
+  const departmentOptions = ['All', ...departments];
 
   const semesters = [
     'All',
@@ -361,7 +353,7 @@ function ExamHistory({ user }) {
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
           >
-            {departments.map(d => (
+            {departmentOptions.map(d => (
               <option key={d} value={d}>{d === 'All' ? 'All Departments' : d}</option>
             ))}
           </select>

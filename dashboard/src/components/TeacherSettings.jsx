@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
+import { useApp } from '../context/AppContext';
 
 function TeacherSettings({ user }) {
+  const { departments = [] } = useApp();
   const [loading, setLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [department, setDepartment] = useState('AI & DS Engineering');
+  const [department, setDepartment] = useState(user?.department || departments[0] || 'AI & DS Engineering');
   const [phone, setPhone] = useState('');
   const [defaultDuration, setDefaultDuration] = useState('45');
   const [defaultSemester, setDefaultSemester] = useState('Semester 7');
@@ -28,15 +30,6 @@ function TeacherSettings({ user }) {
       setToast(null);
     }, 4500);
   };
-
-  const departments = [
-    'AI & DS Engineering',
-    'Computer Science & Engineering',
-    'Electrical & Computer Engineering',
-    'Electronics & Telecommunication Engineering',
-    'Mechanical & Mechatronics Engineering',
-    'Applied Science & Engineering'
-  ];
 
   const semesters = [
     'Semester 1',

@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
+import { useApp } from '../context/AppContext';
 
 function UserManagement({ user }) {
+  const { departments = [] } = useApp();
   const [activeTab, setActiveTab] = useState('teachers'); // 'teachers' | 'students'
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
@@ -34,7 +36,7 @@ function UserManagement({ user }) {
   const [newPrn, setNewPrn] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newDept, setNewDept] = useState('Computer Science & Engineering');
+  const [newDept, setNewDept] = useState(departments[0] || 'Computer Science & Engineering');
   const [newSem, setNewSem] = useState('Semester 7');
   const [newPhone, setNewPhone] = useState('');
 
@@ -59,15 +61,6 @@ function UserManagement({ user }) {
       setToast(null);
     }, 4500);
   };
-
-  const departments = [
-    'AI & DS Engineering',
-    'Computer Science & Engineering',
-    'Electrical & Computer Engineering',
-    'Electronics & Telecommunication Engineering',
-    'Mechanical & Mechatronics Engineering',
-    'Applied Science & Engineering'
-  ];
 
   const semesters = [
     'Semester 1',

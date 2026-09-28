@@ -1,19 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-
-const DEPARTMENTS = [
-  'AI & DS Engineering',
-  'Computer Science & Engineering',
-  'Electrical & Computer Engineering',
-  'Electronics & Telecommunication Engineering',
-  'Mechanical & Mechatronics Engineering',
-  'Applied Science & Engineering',
-];
+import { useApp } from '../context/AppContext';
 
 const SET_NAMES = ['Set A', 'Set B', 'Set C', 'Set D'];
 
 function ExamImport({ user, onClose, onImported }) {
+  const { departments = [] } = useApp();
   const [step, setStep] = useState(1);
   const [parsedData, setParsedData] = useState(null);
   const [errors, setErrors] = useState([]);
@@ -69,9 +62,10 @@ function ExamImport({ user, onClose, onImported }) {
       addInfoRow('Schedule End   (YYYY-MM-DD HH:MM) *');
       addInfoRow('Total Questions Per Set *');
 
+      const deptValidationFormula = '"' + (departments.length > 0 ? departments.join(',') : 'Computer Science & Engineering') + '"';
       info.getCell('B5').dataValidation = {
         type: 'list', allowBlank: false,
-        formulae: ['"AI & DS Engineering,Computer Science & Engineering,Electrical & Computer Engineering,Electronics & Telecommunication Engineering,Mechanical & Mechatronics Engineering,Applied Science & Engineering"'],
+        formulae: [deptValidationFormula],
         showErrorMessage: true, errorStyle: 'stop',
         errorTitle: 'Invalid Department', error: 'Please select a department from the dropdown.'
       };
@@ -158,7 +152,7 @@ function ExamImport({ user, onClose, onImported }) {
 
       if (!examName) errs.push('Exam Name is required (Exam Info B3).');
       if (!subject) errs.push('Subject / Course is required (Exam Info B4).');
-      if (!department || !DEPARTMENTS.includes(department))
+      if (!department || (departments.length > 0 && !departments.includes(department)))
         errs.push('Department is invalid or not selected from dropdown (Exam Info B5). Got: "' + department + '"');
       if (!semester) errs.push('Semester is required (Exam Info B6).');
       const durationMinutes = parseInt(durationRaw);

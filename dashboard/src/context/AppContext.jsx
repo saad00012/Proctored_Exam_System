@@ -17,6 +17,16 @@ export function AppProvider({ children }) {
   const [attempts, setAttempts] = useState([]);
   const [papers, setPapers] = useState([]);
   const [exams, setExams] = useState([]);
+  const DEFAULT_DEPARTMENTS = [
+    'AI & DS Engineering',
+    'Computer Science & Engineering',
+    'Electrical & Computer Engineering',
+    'Electronics & Telecommunication Engineering',
+    'Mechanical & Mechatronics Engineering',
+    'Applied Science & Engineering'
+  ];
+
+  const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS);
   const [questions, setQuestions] = useState([]);
   const [allowedDomains, setAllowedDomains] = useState(['dnyanshree.edu.in']);
   
@@ -35,6 +45,83 @@ export function AppProvider({ children }) {
     }
     return user?.token || '';
   }, [user]);
+
+  // Dynamic Department Actions
+  const addDepartment = useCallback(async (deptName) => {
+    const trimmed = (deptName || '').trim();
+    if (!trimmed) throw new Error('Department name cannot be empty.');
+    if (departments.some(d => d.toLowerCase() === trimmed.toLowerCase())) {
+      throw new Error(`Department "${trimmed}" already exists.`);
+    }
+
+    const updatedList = [...departments, trimmed];
+    if (db) {
+      await setDoc(doc(db, 'settings', 'departments'), {
+        list: updatedList,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.email || 'admin'
+      }, { merge: true });
+    }
+    setDepartments(updatedList);
+    return updatedList;
+  }, [departments, user]);
+
+  const updateDepartment = useCallback(async (oldName, newName) => {
+    const trimmedNew = (newName || '').trim();
+    if (!trimmedNew) throw new Error('New department name cannot be empty.');
+    if (oldName.toLowerCase() !== trimmedNew.toLowerCase() && departments.some(d => d.toLowerCase() === trimmedNew.toLowerCase())) {
+      throw new Error(`Department "${trimmedNew}" already exists.`);
+    }
+
+    const updatedList = departments.map(d => d === oldName ? trimmedNew : d);
+    if (db) {
+      await setDoc(doc(db, 'settings', 'departments'), {
+        list: updatedList,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.email || 'admin'
+      }, { merge: true });
+    }
+    setDepartments(updatedList);
+    return updatedList;
+  }, [departments, user]);
+
+  const deleteDepartment = useCallback(async (deptName) => {
+    if (departments.length <= 1) {
+      throw new Error('At least one department must remain configured.');
+    }
+    const updatedList = departments.filter(d => d !== deptName);
+    if (db) {
+      await setDoc(doc(db, 'settings', 'departments'), {
+        list: updatedList,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.email || 'admin'
+      }, { merge: true });
+    }
+    setDepartments(updatedList);
+    return updatedList;
+  }, [departments, user]);
+
+  // Firestore sync for settings/departments
+  useEffect(() => {
+    if (!db) return;
+    const deptDocRef = doc(db, 'settings', 'departments');
+    const unsubDept = onSnapshot(deptDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data.list) && data.list.length > 0) {
+          setDepartments(data.list);
+        }
+      } else {
+        // Initialize with default list if not yet present in database
+        setDoc(deptDocRef, {
+          list: DEFAULT_DEPARTMENTS,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).catch(err => console.warn('Init departments error:', err));
+      }
+    }, (err) => console.error('Error syncing departments in AppContext:', err));
+
+    return () => unsubDept();
+  }, []);
 
   // Auth Observer
   useEffect(() => {
@@ -225,6 +312,10 @@ export function AppProvider({ children }) {
     role,
     setRole,
     authLoading,
+    departments,
+    addDepartment,
+    updateDepartment,
+    deleteDepartment,
     students,
     teachers,
     attempts,
@@ -244,6 +335,10 @@ export function AppProvider({ children }) {
     user,
     role,
     authLoading,
+    departments,
+    addDepartment,
+    updateDepartment,
+    deleteDepartment,
     students,
     teachers,
     attempts,

@@ -10,6 +10,7 @@ import StudentDirectory from './components/StudentDirectory';
 import UserManagement from './components/UserManagement';
 import TeacherSettings from './components/TeacherSettings';
 import ExamHistory from './components/ExamHistory';
+import DepartmentManagement from './components/DepartmentManagement';
 import API_BASE_URL from './config';
 
 function App() {
@@ -469,9 +470,12 @@ function App() {
                 Database & Policy Administration
               </h2>
               <p style={{ color: 'var(--text-secondary)' }}>
-                Configure global timeouts, warning thresholds, and clean test databases.
+                Configure academic departments, global exam policies, timeouts, and clean databases.
               </p>
             </div>
+
+            {/* Department Management */}
+            <DepartmentManagement />
 
             <div className="grid-cols-1-2" style={{ alignItems: 'flex-start', gap: '1.5rem' }}>
               <div className="glass-card">

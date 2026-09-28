@@ -3,11 +3,13 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfi
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import API_BASE_URL from '../config';
+import { useApp } from '../context/AppContext';
 
 function Login({ onLoginSuccess }) {
+  const { departments = [] } = useApp() || {};
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
-  const [department, setDepartment] = useState('AI & DS Engineering');
+  const [department, setDepartment] = useState(departments[0] || 'AI & DS Engineering');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -207,12 +209,9 @@ function Login({ onLoginSuccess }) {
                     disabled={loading}
                     required
                   >
-                    <option value="AI & DS Engineering">AI & DS Engineering</option>
-                    <option value="Computer Science & Engineering">Computer Science & Engineering</option>
-                    <option value="Electrical & Computer Engineering">Electrical & Computer Engineering</option>
-                    <option value="Electronics & Telecommunication Engineering">Electronics & Telecommunication Engineering</option>
-                    <option value="Mechanical & Mechatronics Engineering">Mechanical & Mechatronics Engineering</option>
-                    <option value="Applied Science & Engineering">Applied Science & Engineering</option>
+                    {departments.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
                   </select>
                 </div>
               )}

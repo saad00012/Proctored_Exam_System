@@ -4,9 +4,11 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { compressImageToBase64 } from '../utils/imageCompressor';
 import ExamImport from './ExamImport';
+import { useApp } from '../context/AppContext';
 
 
 function PaperUpload({ user }) {
+  const { departments = [] } = useApp();
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
 
   const formatScheduleDate = (dateStr) => {
@@ -21,22 +23,13 @@ function PaperUpload({ user }) {
     return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
   };
 
-  const departments = [
-    'AI & DS Engineering',
-    'Computer Science & Engineering',
-    'Electrical & Computer Engineering',
-    'Electronics & Telecommunication Engineering',
-    'Mechanical & Mechatronics Engineering',
-    'Applied Science & Engineering'
-  ];
-
   const [papers, setPapers] = useState([]);
   const [selectedPaper, setSelectedPaper] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [showCreatePaper, setShowCreatePaper] = useState(false);
   const [paperTitle, setPaperTitle] = useState('');
   const [paperSubject, setPaperSubject] = useState('');
-  const [paperDepartment, setPaperDepartment] = useState(user?.department || 'Computer Science & Engineering');
+  const [paperDepartment, setPaperDepartment] = useState(user?.department || departments[0] || 'Computer Science & Engineering');
   const [loading, setLoading] = useState(false);
   const [showEditPaperInfo, setShowEditPaperInfo] = useState(false);
   const [editPaperTitle, setEditPaperTitle] = useState('');
@@ -855,12 +848,9 @@ function PaperUpload({ user }) {
                   <input type="text" className="input-field" placeholder="Exam Name (e.g. Data Structures Mid-Sem)" value={examName} onChange={e => setExamName(e.target.value)} style={{ flex: 2, minWidth: '220px' }} required disabled={loading} />
                   <input type="text" className="input-field" placeholder="Subject / Course Name (e.g. Data Structures)" value={examSubject} onChange={e => setExamSubject(e.target.value)} style={{ flex: 2, minWidth: '200px' }} required disabled={loading} />
                   <select className="input-field" value={examDepartment} onChange={e => setExamDepartment(e.target.value)} style={{ flex: 1, minWidth: '200px' }} required disabled={loading}>
-                    <option value="AI & DS Engineering">AI &amp; DS Engineering</option>
-                    <option value="Computer Science & Engineering">Computer Science &amp; Engineering</option>
-                    <option value="Electrical & Computer Engineering">Electrical &amp; Computer Engineering</option>
-                    <option value="Electronics & Telecommunication Engineering">Electronics &amp; Telecommunication Engineering</option>
-                    <option value="Mechanical & Mechatronics Engineering">Mechanical &amp; Mechatronics Engineering</option>
-                    <option value="Applied Science & Engineering">Applied Science &amp; Engineering</option>
+                    {departments.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
                   </select>
                   <select className="input-field" value={examSemester} onChange={e => setExamSemester(e.target.value)} style={{ flex: 1, minWidth: '150px' }} required disabled={loading}>
                     <option value="Semester 1">Semester 1</option>
@@ -901,12 +891,9 @@ function PaperUpload({ user }) {
                 <input type="text" className="input-field" placeholder="Paper Title (e.g. Set A)" value={paperTitle} onChange={(e) => setPaperTitle(e.target.value)} style={{ flex: 1, minWidth: '200px' }} required disabled={loading} />
                 <input type="text" className="input-field" placeholder="Subject / Exam Name (e.g. Data Structures)" value={paperSubject} onChange={(e) => setPaperSubject(e.target.value)} style={{ flex: 1, minWidth: '220px' }} required disabled={loading} />
                 <select className="input-field" value={paperDepartment} onChange={(e) => setPaperDepartment(e.target.value)} style={{ flex: 1, minWidth: '200px' }} required disabled={loading}>
-                  <option value="AI & DS Engineering">AI &amp; DS Engineering</option>
-                  <option value="Computer Science & Engineering">Computer Science &amp; Engineering</option>
-                  <option value="Electrical & Computer Engineering">Electrical &amp; Computer Engineering</option>
-                  <option value="Electronics & Telecommunication Engineering">Electronics &amp; Telecommunication Engineering</option>
-                  <option value="Mechanical & Mechatronics Engineering">Mechanical &amp; Mechatronics Engineering</option>
-                  <option value="Applied Science & Engineering">Applied Science &amp; Engineering</option>
+                  {departments.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '140px' }}>
                   <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Duration (mins)</label>
@@ -1093,12 +1080,9 @@ function PaperUpload({ user }) {
                         <input type="text" className="input-field" placeholder="Exam Name" value={editExamName} onChange={e => setEditExamName(e.target.value)} style={{ flex: 2, minWidth: '180px' }} required disabled={loading} />
                         <input type="text" className="input-field" placeholder="Subject / Course" value={editExamSubject} onChange={e => setEditExamSubject(e.target.value)} style={{ flex: 2, minWidth: '180px' }} required disabled={loading} />
                         <select className="input-field" value={editExamDepartment} onChange={e => setEditExamDepartment(e.target.value)} style={{ flex: 1, minWidth: '190px' }} required disabled={loading}>
-                          <option value="AI & DS Engineering">AI &amp; DS Engineering</option>
-                          <option value="Computer Science & Engineering">Computer Science &amp; Engineering</option>
-                          <option value="Electrical & Computer Engineering">Electrical &amp; Computer Engineering</option>
-                          <option value="Electronics & Telecommunication Engineering">Electronics &amp; Telecommunication Engineering</option>
-                          <option value="Mechanical & Mechatronics Engineering">Mechanical &amp; Mechatronics Engineering</option>
-                          <option value="Applied Science & Engineering">Applied Science &amp; Engineering</option>
+                          {departments.map(d => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
                         </select>
                         <select className="input-field" value={editExamSemester} onChange={e => setEditExamSemester(e.target.value)} style={{ flex: 1, minWidth: '140px' }} required disabled={loading}>
                           <option value="Semester 1">Semester 1</option>
@@ -1317,12 +1301,9 @@ function PaperUpload({ user }) {
                   onChange={(e) => setEditPaperDepartment(e.target.value)}
                   required
                 >
-                  <option value="AI & DS Engineering">AI & DS Engineering</option>
-                  <option value="Computer Science & Engineering">Computer Science & Engineering</option>
-                  <option value="Electrical & Computer Engineering">Electrical & Computer Engineering</option>
-                  <option value="Electronics & Telecommunication Engineering">Electronics & Telecommunication Engineering</option>
-                  <option value="Mechanical & Mechatronics Engineering">Mechanical & Mechatronics Engineering</option>
-                  <option value="Applied Science & Engineering">Applied Science & Engineering</option>
+                  {departments.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
               </div>
               <div style={{ flex: 1, minWidth: '120px' }}>
