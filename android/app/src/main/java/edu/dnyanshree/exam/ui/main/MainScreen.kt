@@ -526,6 +526,7 @@ fun MainScreen(
             }
         }
     }
+    } // End of else
 
     // ── 6-Digit Room OTP Verification Dialog ───────────────────────────────
     if (selectedExamForOtp != null) {

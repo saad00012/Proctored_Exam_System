@@ -672,6 +672,114 @@ function ExamHistory({ user }) {
           })}
         </div>
       )}
+
+      {/* Review Modal */}
+      {reviewingParticipant && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+        }}>
+          <div className="glass-card" style={{
+            width: '100%', maxWidth: '760px', maxHeight: '90vh', overflowY: 'auto',
+            padding: '2rem', position: 'relative', display: 'flex', flexDirection: 'column', gap: '1.5rem'
+          }}>
+            <button 
+              onClick={() => { setReviewingParticipant(null); setReviewExamGroup(null); }}
+              style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-secondary)' }}
+            >
+              ✕
+            </button>
+            
+            {/* Header */}
+            <div>
+              <h3 style={{ margin: '0 0 0.5rem 0' }}>{reviewingParticipant.studentName}</h3>
+              <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem', flexWrap: 'wrap' }}>
+                <span><strong>PRN:</strong> {reviewingParticipant.prnNumber}</span>
+                <span><strong>Dept:</strong> {reviewingParticipant.department}</span>
+                <span><strong>Sem:</strong> {reviewingParticipant.semester}</span>
+              </div>
+            </div>
+
+            {/* Summary Bar */}
+            <div style={{
+              display: 'flex', gap: '1rem', background: 'rgba(0,0,0,0.1)', padding: '1rem', borderRadius: '8px', flexWrap: 'wrap', alignItems: 'center'
+            }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>SCORE</span>
+                <strong>{reviewingParticipant.score} / {reviewingParticipant.totalQuestions}</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>PERCENTAGE</span>
+                <strong>{reviewingParticipant.percentage}%</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>STATUS</span>
+                <span className={`badge badge-${reviewingParticipant.status.includes('submitted') ? 'success' : 'warning'}`}>
+                  {reviewingParticipant.status}
+                </span>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>WARNINGS</span>
+                <span className={`badge badge-${reviewingParticipant.warnings > 0 ? 'danger' : 'info'}`}>
+                  {reviewingParticipant.warnings}
+                </span>
+              </div>
+            </div>
+
+            {/* Question List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {(() => {
+                const paperQs = questions.filter(q => q.paperId === reviewingParticipant.paperId);
+                const att = attempts.find(a => a.studentId === reviewingParticipant.studentId && a.paperId === reviewingParticipant.paperId);
+                const answers = att?.answers || {};
+
+                if (paperQs.length === 0) return <p>No questions found for this paper.</p>;
+
+                return paperQs.map((q, idx) => {
+                  const studentAnsIdx = answers[q.id];
+                  const isUnanswered = studentAnsIdx === undefined;
+                  const isCorrect = !isUnanswered && studentAnsIdx === q.correctOptionIndex;
+                  
+                  let bgColor = 'rgba(0,0,0,0.05)';
+                  let icon = '⬜';
+                  if (!isUnanswered) {
+                    bgColor = isCorrect ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                    icon = isCorrect ? '✅' : '❌';
+                  }
+
+                  const studentText = isUnanswered ? 'Not answered' : q.options[studentAnsIdx]?.text;
+                  const correctText = q.options[q.correctOptionIndex]?.text;
+
+                  return (
+                    <div key={q.id} style={{
+                      background: bgColor, padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)'
+                    }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{icon}</span>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600 }}>
+                            Q{idx + 1}. {q.questionText.length > 120 ? q.questionText.substring(0, 120) + '...' : q.questionText}
+                          </p>
+                          <div style={{ fontSize: '0.9rem' }}>
+                            <div style={{ color: isUnanswered ? 'var(--text-muted)' : (isCorrect ? 'var(--color-success)' : 'var(--color-danger)') }}>
+                              <strong>Student's Answer:</strong> {studentText}
+                            </div>
+                            {!isCorrect && !isUnanswered && (
+                              <div style={{ color: 'var(--color-success)', marginTop: '0.25rem' }}>
+                                <strong>Correct Answer:</strong> {correctText}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
