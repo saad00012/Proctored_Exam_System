@@ -972,7 +972,7 @@ fun ExamScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "Question Navigator (tap to jump)",
+                    text = "Question Status Overview",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1013,7 +1013,6 @@ fun ExamScreen(
                                 .clip(CircleShape)
                                 .background(bgColor)
                                 .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                .clickable { currentQuestionIdx = idx }
                         ) {
                             Text(
                                 text = "${idx + 1}",
