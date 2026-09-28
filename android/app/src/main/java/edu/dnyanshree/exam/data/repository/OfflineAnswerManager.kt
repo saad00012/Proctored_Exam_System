@@ -14,7 +14,7 @@ data class PendingAnswer(
     val timestamp: Long
 )
 
-class OfflineAnswerManager(context: Context) {
+class OfflineAnswerManager(private val context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("offline_exam_vault", Context.MODE_PRIVATE)
 
@@ -162,21 +162,34 @@ class OfflineAnswerManager(context: Context) {
     }
 
     fun clearAnswer(paperId: String, questionId: String) {
-        val prefs = context.getSharedPreferences("offline_exam_vault", Context.MODE_PRIVATE)
-        
-        // 1. Remove from local answers
-        val answersKey = "answers_$paperId"
-        val existingAnswersJson = prefs.getString(answersKey, "{}") ?: "{}"
         try {
+            // 1. Remove from local answers
+            val answersKey = "answers_$paperId"
+            val existingAnswersJson = prefs.getString(answersKey, "{}") ?: "{}"
             val answersObj = JSONObject(existingAnswersJson)
             if (answersObj.has(questionId)) {
                 answersObj.remove(questionId)
-                prefs.edit().putString(answersKey, answersObj.toString()).apply()
             }
-        } catch (_: Exception) {}
-        
-        // Note: Realistically, you should also remove it from the pending sync queue or enqueue a delete op,
-        // but to match the simplified prompt request we just remove it from prefs if it exists or do similar.
+
+            // 2. Remove from pending sync queue if present
+            val queueKey = "queue_$paperId"
+            val existingQueueJson = prefs.getString(queueKey, "[]") ?: "[]"
+            val queueArr = JSONArray(existingQueueJson)
+            val newQueueArr = JSONArray()
+            for (i in 0 until queueArr.length()) {
+                val item = queueArr.getJSONObject(i)
+                if (item.optString("questionId") != questionId) {
+                    newQueueArr.put(item)
+                }
+            }
+
+            prefs.edit()
+                .putString(answersKey, answersObj.toString())
+                .putString(queueKey, newQueueArr.toString())
+                .apply()
+        } catch (e: Exception) {
+            // Ignore error
+        }
     }
 
     /**
