@@ -382,7 +382,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       };
     });
 
-    const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+    const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
 
     return studentSummaries.filter(student => {
       if (!isSuperAdmin) {

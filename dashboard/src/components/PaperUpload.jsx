@@ -8,8 +8,8 @@ import { useApp } from '../context/AppContext';
 
 
 function PaperUpload({ user }) {
-  const { departments = [] } = useApp();
-  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+  const { role, departments = [] } = useApp();
+  const isSuperAdmin = role === 'superadmin' || role === 'admin' || user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
 
   const formatScheduleDate = (dateStr) => {
     if (!dateStr) return '—';

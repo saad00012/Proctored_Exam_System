@@ -223,7 +223,7 @@ function ExamHistory({ user }) {
     };
   });
 
-  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
 
   // Filter exams
   const filteredExams = conductedExams.filter(exam => {

@@ -176,7 +176,7 @@ export function AppProvider({ children }) {
           console.warn('Could not sync Firestore profile on auth change:', e);
         }
 
-        const isSuperAdmin = userRole === 'superadmin' || userRole === 'admin' || firebaseUser.email?.startsWith('admin');
+        const isSuperAdmin = userRole === 'superadmin' || userRole === 'admin' || firebaseUser.email?.toLowerCase().startsWith('admin');
         const finalRole = isSuperAdmin ? 'superadmin' : 'teacher';
         setRole(finalRole);
 
@@ -184,7 +184,7 @@ export function AppProvider({ children }) {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           name: userName,
-          role: userRole,
+          role: finalRole,
           department: userDept,
           token
         });
