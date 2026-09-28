@@ -1205,7 +1205,8 @@ function PaperUpload({ user }) {
                         {examPapers.map((paper, idx) => {
                           const isPaperVisible = paper.status === 'published' && paper.isVisible !== false && !paper.isHidden;
                           return (
-                            <div key={paper.id} className="flex-between" style={{ padding: '0.85rem 1rem', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                            <div key={paper.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div className="flex-between" style={{ padding: '0.85rem 1rem', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid var(--border-color)', ...(duplicatingPaperId === paper.id ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : {}) }}>
                               <div>
                                 <span style={{ fontWeight: 500, fontSize: '0.92rem' }}>Set {idx + 1}: {paper.title}</span>
                                 <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Created {formatCreatedDate(paper.createdAt)}</span>
@@ -1218,8 +1219,17 @@ function PaperUpload({ user }) {
                                   {isPaperVisible ? 'Hide' : 'Publish'}
                                 </button>
                                 <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={() => setSelectedPaper(paper)}>Open</button>
+                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={() => { setDuplicatingPaperId(paper.id); setDuplicatePaperTitle(paper.title + ' (Copy)'); }}>⧉ Duplicate</button>
                                 <button className="btn btn-danger" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
                               </div>
+                            </div>
+                            {duplicatingPaperId === paper.id && (
+                              <div className="flex-row" style={{ gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderTop: 'none', borderBottomLeftRadius: '8px', borderBottomRightRadius: '8px' }}>
+                                <input type="text" className="input-field" value={duplicatePaperTitle} onChange={e => setDuplicatePaperTitle(e.target.value)} style={{ flex: 1, padding: '0.4rem 0.75rem', fontSize: '0.85rem' }} autoFocus />
+                                <button className="btn btn-primary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }} onClick={() => handleDuplicatePaper(paper)}>Confirm Duplicate</button>
+                                <button className="btn btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setDuplicatingPaperId(null)}>Cancel</button>
+                              </div>
+                            )}
                             </div>
                           );
                         })}
@@ -1254,41 +1264,51 @@ function PaperUpload({ user }) {
                   const isPaperStarted = paper.isStarted === true;
                   const canEditPaper = canModifyPaper(paper);
                   return (
-                    <div key={paper.id} className="glass-card flex-between" style={{ padding: '1.25rem 1.5rem', cursor: 'pointer' }} onClick={() => setSelectedPaper(paper)}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                          <h4 style={{ fontSize: '1.1rem', margin: 0 }}>{paper.title}</h4>
-                          {isPaperStarted && (
-                            <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>
-                              🟢 OTP: {paper.examOtp || 'Active'}
-                            </span>
+                    <div key={paper.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div className="glass-card flex-between" style={{ padding: '1.25rem 1.5rem', cursor: 'pointer', ...(duplicatingPaperId === paper.id ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : {}) }} onClick={() => setSelectedPaper(paper)}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <h4 style={{ fontSize: '1.1rem', margin: 0 }}>{paper.title}</h4>
+                            {isPaperStarted && (
+                              <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>
+                                🟢 OTP: {paper.examOtp || 'Active'}
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                            Department: <strong>{paper.department}</strong> | Created: {formatCreatedDate(paper.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center' }}>
+                          {isPaperStarted ? (
+                            <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleEndPaperSession(paper, e)} disabled={loading || !canEditPaper}>
+                              ⏹️ End Session
+                            </button>
+                          ) : (
+                            <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={e => handleStartPaperSession(paper, e)} disabled={loading || !canEditPaper}>
+                              ▶️ Start Exam (OTP)
+                            </button>
+                          )}
+                          <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={!isPaperVisible ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
+                            {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
+                          </span>
+                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleTogglePaperVisibility(paper, e)} disabled={loading || !canEditPaper}>
+                            {isPaperVisible ? '🔒 Hide' : '👁️ Publish'}
+                          </button>
+                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>Open</button>
+                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setDuplicatingPaperId(paper.id); setDuplicatePaperTitle(paper.title + ' (Copy)'); }}>⧉ Duplicate</button>
+                          {canEditPaper && (
+                            <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
                           )}
                         </div>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          Department: <strong>{paper.department}</strong> | Created: {formatCreatedDate(paper.createdAt)}
-                        </p>
                       </div>
-                      <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center' }}>
-                        {isPaperStarted ? (
-                          <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleEndPaperSession(paper, e)} disabled={loading || !canEditPaper}>
-                            ⏹️ End Session
-                          </button>
-                        ) : (
-                          <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={e => handleStartPaperSession(paper, e)} disabled={loading || !canEditPaper}>
-                            ▶️ Start Exam (OTP)
-                          </button>
-                        )}
-                        <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={!isPaperVisible ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
-                          {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
-                        </span>
-                        <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleTogglePaperVisibility(paper, e)} disabled={loading || !canEditPaper}>
-                          {isPaperVisible ? '🔒 Hide' : '👁️ Publish'}
-                        </button>
-                        <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>Open</button>
-                        {canEditPaper && (
-                          <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
-                        )}
-                      </div>
+                      {duplicatingPaperId === paper.id && (
+                        <div className="flex-row" style={{ gap: '0.5rem', padding: '1rem 1.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderTop: 'none', borderBottomLeftRadius: '10px', borderBottomRightRadius: '10px' }}>
+                          <input type="text" className="input-field" value={duplicatePaperTitle} onChange={e => setDuplicatePaperTitle(e.target.value)} style={{ flex: 1 }} autoFocus />
+                          <button className="btn btn-primary" onClick={() => handleDuplicatePaper(paper)}>Confirm Duplicate</button>
+                          <button className="btn btn-secondary" onClick={() => setDuplicatingPaperId(null)}>Cancel</button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
