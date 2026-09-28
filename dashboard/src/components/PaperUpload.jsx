@@ -33,6 +33,8 @@ function PaperUpload({ user }) {
   const [loading, setLoading] = useState(false);
   const [showEditPaperInfo, setShowEditPaperInfo] = useState(false);
   const [editPaperTitle, setEditPaperTitle] = useState('');
+  const [duplicatingPaperId, setDuplicatingPaperId] = useState(null);
+  const [duplicatePaperTitle, setDuplicatePaperTitle] = useState('');
   const [editPaperSubject, setEditPaperSubject] = useState('');
   const [editPaperDepartment, setEditPaperDepartment] = useState('');
   const [paperDuration, setPaperDuration] = useState('');
@@ -92,6 +94,32 @@ function PaperUpload({ user }) {
   ]);
   const [correctOption, setCorrectOption] = useState(0);
 
+  const moveQuestionUp = async (idx) => {
+    if (idx === 0) return;
+    const updated = [...questions];
+    const temp = updated[idx - 1];
+    updated[idx - 1] = updated[idx];
+    updated[idx] = temp;
+    try {
+      await Promise.all(updated.map((q, i) => updateDoc(doc(db, 'questions', q.id), { order: i })));
+    } catch (e) {
+      console.error('Failed to reorder:', e);
+    }
+  };
+
+  const moveQuestionDown = async (idx) => {
+    if (idx >= questions.length - 1) return;
+    const updated = [...questions];
+    const temp = updated[idx + 1];
+    updated[idx + 1] = updated[idx];
+    updated[idx] = temp;
+    try {
+      await Promise.all(updated.map((q, i) => updateDoc(doc(db, 'questions', q.id), { order: i })));
+    } catch (e) {
+      console.error('Failed to reorder:', e);
+    }
+  };
+
   // Sync papers from Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'papers'), (snapshot) => {
@@ -134,6 +162,7 @@ function PaperUpload({ user }) {
       snapshot.forEach((doc) => {
         qList.push({ id: doc.id, ...doc.data() });
       });
+      qList.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
       setQuestions(qList);
     }, (error) => {
       console.error("Error syncing questions in PaperUpload.jsx:", error);
@@ -493,6 +522,47 @@ function PaperUpload({ user }) {
     }
   };
 
+  const handleDuplicatePaper = async (paper) => {
+    if (!duplicatePaperTitle.trim()) {
+      alert('Please enter a title for the duplicate paper set.');
+      return;
+    }
+    setLoading(true);
+    try {
+      // 1. Create new paper with same fields but new title
+      const newPaperRef = await addDoc(collection(db, 'papers'), {
+        ...paper,
+        id: undefined,
+        title: duplicatePaperTitle.trim(),
+        status: 'draft',
+        isStarted: false,
+        isVisible: false,
+        isHidden: false,
+        examOtp: '',
+        createdAt: new Date().toISOString(),
+        createdById: user?.uid || '',
+        createdByEmail: user?.email || '',
+        createdBy: user?.name || '',
+      });
+      // 2. Copy all questions from original paper
+      const qSnap = await getDocs(query(collection(db, 'questions'), where('paperId', '==', paper.id)));
+      await Promise.all(qSnap.docs.map((qDoc, idx) =>
+        addDoc(collection(db, 'questions'), {
+          ...qDoc.data(),
+          paperId: newPaperRef.id,
+          order: idx,
+        })
+      ));
+      setDuplicatingPaperId(null);
+      setDuplicatePaperTitle('');
+      alert(`✅ Paper set duplicated as "${duplicatePaperTitle.trim()}" (draft). ${qSnap.size} questions copied.`);
+    } catch (e) {
+      alert('Failed to duplicate paper: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteQuestion = async (questionId) => {
     if (!window.confirm("Are you sure you want to delete this question?")) {
       return;
@@ -738,7 +808,8 @@ function PaperUpload({ user }) {
         questionImageUrl,
         options: optionsData,
         correctOptionIndex: correctOption,
-        department: selectedPaper.department
+        department: selectedPaper.department,
+        order: questions.length
       };
 
       await addDoc(collection(db, 'questions'), questionData);
@@ -1389,7 +1460,23 @@ function PaperUpload({ user }) {
                   <div key={q.id} className="glass-card" style={{ padding: '1.25rem' }}>
                     <div className="flex-between" style={{ marginBottom: '0.75rem' }}>
                       <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>Q{idx + 1}</span>
-                      <div className="flex-row" style={{ gap: '0.5rem' }}>
+                      <div className="flex-row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+                        <button 
+                          className="btn btn-secondary" 
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} 
+                          onClick={() => moveQuestionUp(idx)} 
+                          disabled={idx === 0 || selectedPaper.status !== 'draft'}
+                        >
+                          ▲
+                        </button>
+                        <button 
+                          className="btn btn-secondary" 
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} 
+                          onClick={() => moveQuestionDown(idx)} 
+                          disabled={idx === questions.length - 1 || selectedPaper.status !== 'draft'}
+                        >
+                          ▼
+                        </button>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           Correct: Option {String.fromCharCode(65 + q.correctOptionIndex)}
                         </span>

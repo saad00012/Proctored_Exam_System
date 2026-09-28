@@ -176,6 +176,8 @@ fun ExamScreen(
     var showScoreScreen by remember { mutableStateOf(false) }
     var serverScore by remember { mutableIntStateOf(0) }
     var serverTotal by remember { mutableIntStateOf(0) }
+    
+    var markedForReview by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var showWarningDialog by remember { mutableStateOf(false) }
@@ -970,7 +972,7 @@ fun ExamScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "Question Navigator (Read-Only Grid)",
+                    text = "Question Navigator (tap to jump)",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -986,15 +988,20 @@ fun ExamScreen(
                         val qId = questions[idx].id
                         val isAnswered = selectedAnswers.containsKey(qId)
                         val isCurrent = currentQuestionIdx == idx
+                        val isMarked = markedForReview.contains(qId)
                         
                         val bgColor = when {
                             isCurrent -> MaterialTheme.colorScheme.primary
-                            isAnswered -> Color(0xFF10B981)
+                            isMarked && isAnswered -> Color(0xFFF59E0B)  // amber: answered+marked
+                            isMarked -> Color(0xFFFDE68A)                // light amber: marked but unanswered  
+                            isAnswered -> Color(0xFF10B981)               // green: answered
                             else -> MaterialTheme.colorScheme.surface
                         }
                         
                         val textColor = when {
                             isCurrent -> MaterialTheme.colorScheme.onPrimary
+                            isMarked && isAnswered -> Color.White
+                            isMarked -> Color(0xFF78350F)
                             isAnswered -> Color.White
                             else -> MaterialTheme.colorScheme.onSurface
                         }
@@ -1006,6 +1013,7 @@ fun ExamScreen(
                                 .clip(CircleShape)
                                 .background(bgColor)
                                 .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                .clickable { currentQuestionIdx = idx }
                         ) {
                             Text(
                                 text = "${idx + 1}",
@@ -1014,6 +1022,27 @@ fun ExamScreen(
                                 fontSize = 14.sp
                             )
                         }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Blue = current
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+                        Text("Current", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    // Green = answered
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(10.dp).background(Color(0xFF10B981), CircleShape))
+                        Text("Answered", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    // Amber = marked
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(10.dp).background(Color(0xFFF59E0B), CircleShape))
+                        Text("Marked", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -1193,9 +1222,66 @@ fun ExamScreen(
                         }
                     }
 
+                    // Clear Answer button (only if answered)
+                    if (selectedAnswers.containsKey(currentQuestion.id)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    // Remove from local map + sync
+                                    offlineAnswerManager.clearAnswer(activePaperId, currentQuestion.id)
+                                    selectedAnswers = selectedAnswers.toMutableMap().apply {
+                                        remove(currentQuestion.id)
+                                    }
+                                    pendingSyncCount = offlineAnswerManager.getPendingCount(activePaperId)
+                                }
+                            ) {
+                                Text(
+                                    "✕ Clear Answer",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+
                     // Navigation Buttons Row (Forward-only progress: Skip allowed, Back forbidden)
                     val isCurrentAnswered = selectedAnswers.containsKey(currentQuestion.id)
                     val isLastQuestion = currentQuestionIdx >= questions.size - 1
+
+                    // Mark for Review toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        val isMarked = markedForReview.contains(currentQuestion.id)
+                        OutlinedButton(
+                            onClick = {
+                                markedForReview = if (isMarked) {
+                                    markedForReview - currentQuestion.id
+                                } else {
+                                    markedForReview + currentQuestion.id
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = if (isMarked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isMarked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (isMarked) "🚩 Marked for Review" else "🏳 Mark for Review",
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
 
                     Row(
                         modifier = Modifier

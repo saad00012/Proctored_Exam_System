@@ -3,6 +3,38 @@ const router = express.Router();
 const { admin, db } = require('../firebase');
 const { verifyToken, isAdmin } = require('../middleware/auth');
 
+// Suspend or Unsuspend a user - ADMIN ONLY
+router.patch('/users/:uid/suspend', verifyToken, async (req, res) => {
+  try {
+    if (!req.user || (req.user.role !== 'superadmin' && req.user.role !== 'admin' && !req.user.email?.toLowerCase().startsWith('admin'))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { uid } = req.params;
+    const { suspended } = req.body;
+
+    if (typeof suspended !== 'boolean') {
+      return res.status(400).json({ error: 'Suspended field must be a boolean.' });
+    }
+
+    await db.collection('users').doc(uid).update({ 
+      suspended: suspended, 
+      suspendedAt: suspended ? new Date().toISOString() : null 
+    });
+
+    try {
+      await admin.auth().updateUser(uid, { disabled: suspended });
+    } catch (authErr) {
+      console.warn(`Could not update Firebase Auth disabled status for ${uid}:`, authErr.message);
+    }
+
+    res.json({ success: true, uid, suspended });
+  } catch (error) {
+    console.error('Error suspending/unsuspending user:', error);
+    res.status(500).json({ error: 'Failed to update suspension status.' });
+  }
+});
+
 // Delete a user entirely (Auth + Firestore) - ADMIN ONLY
 router.delete('/users/:uid', verifyToken, async (req, res) => {
   try {

@@ -24,6 +24,28 @@ function UserManagement({ user }) {
     return user?.token || '';
   };
 
+  const handleToggleSuspend = async (targetUser) => {
+    const newSuspended = !targetUser.suspended;
+    const action = newSuspended ? 'suspend' : 'unsuspend';
+    if (!window.confirm(`Are you sure you want to ${action} ${targetUser.name || targetUser.email}?`)) return;
+    setActionLoading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/admin/users/${targetUser.uid || targetUser.id}/suspend`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ suspended: newSuspended })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      showToast(`${targetUser.name} has been ${action}ed successfully.`, newSuspended ? 'danger' : 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'danger');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('All');
@@ -530,7 +552,14 @@ function UserManagement({ user }) {
                 ) : (
                   filteredTeachers.map(t => (
                     <tr key={t.uid} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '1rem 1.5rem', fontWeight: 500 }}>{t.name}</td>
+                      <td style={{ padding: '1rem 1.5rem', fontWeight: 500 }}>
+                        {t.name}
+                        {t.suspended && (
+                          <span className="badge badge-danger" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                            Suspended
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '1rem 1.5rem', color: 'var(--text-secondary)' }}>{t.email}</td>
                       <td style={{ padding: '1rem 1.5rem' }}>
                         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
@@ -542,6 +571,15 @@ function UserManagement({ user }) {
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setEditUser(t)}>Edit</button>
+                          <button
+                            className={`btn ${t.suspended ? 'btn-secondary' : 'btn-danger'}`}
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                            onClick={() => handleToggleSuspend(t)}
+                            disabled={actionLoading}
+                            title={t.suspended ? 'Unsuspend user' : 'Suspend user'}
+                          >
+                            {t.suspended ? '✓ Unsuspend' : '⊘ Suspend'}
+                          </button>
                           <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderColor: 'var(--secondary)' }} onClick={() => { setResettingUser(t); setResetPasswordMode('email'); setGeneratedResetLink(''); }}>🔑 Reset Pass</button>
                           <button className="btn btn-danger" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setDeletingUser(t)}>Delete</button>
                         </div>
