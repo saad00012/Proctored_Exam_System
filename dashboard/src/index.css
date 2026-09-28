@@ -178,13 +178,15 @@ p { color: var(--text-secondary); }
 }
 
 .sidebar-section-label {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  padding: 0 0.5rem;
-  margin-top: 0.5rem;
+  padding: 0.35rem 0.6rem 0.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .main-content {
@@ -459,6 +461,12 @@ p { color: var(--text-secondary); }
   border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
+.badge-primary {
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+
 .badge-neutral {
   background: #F3F4F6;
   color: var(--text-secondary);
@@ -470,12 +478,12 @@ p { color: var(--text-secondary); }
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  padding: 0.7rem 0.9rem;
+  padding: 0.65rem 0.85rem;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-weight: 500;
-  font-size: 0.9rem;
-  transition: all var(--transition-normal);
+  font-size: 0.88rem;
+  transition: all var(--transition-fast);
   cursor: pointer;
   border: 1px solid transparent;
   position: relative;
@@ -483,15 +491,26 @@ p { color: var(--text-secondary); }
 
 .sidebar-link .sidebar-icon {
   font-size: 1rem;
-  width: 20px;
-  text-align: center;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.03);
   flex-shrink: 0;
+  transition: transform var(--transition-fast);
 }
 
 .sidebar-link:hover {
   background: var(--primary-light);
   color: var(--primary);
   border-color: rgba(79, 70, 229, 0.1);
+}
+
+.sidebar-link:hover .sidebar-icon {
+  transform: scale(1.08);
+  background: rgba(79, 70, 229, 0.08);
 }
 
 .sidebar-link.active {
@@ -502,10 +521,14 @@ p { color: var(--text-secondary); }
   box-shadow: var(--shadow-xs);
 }
 
+.sidebar-link.active .sidebar-icon {
+  background: rgba(79, 70, 229, 0.14);
+}
+
 .sidebar-link.active::before {
   content: '';
   position: absolute;
-  left: 0; top: 20%; bottom: 20%;
+  left: 0; top: 18%; bottom: 18%;
   width: 3px;
   background: linear-gradient(180deg, var(--primary), var(--secondary));
   border-radius: 0 4px 4px 0;

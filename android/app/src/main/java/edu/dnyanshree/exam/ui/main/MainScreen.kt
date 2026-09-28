@@ -39,6 +39,10 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -142,6 +146,7 @@ fun MainScreen(
 
     var showExamInstructions by remember { mutableStateOf(false) }
     var pendingExamPaper by remember { mutableStateOf<ExamPaperItem?>(null) }
+    var selectedExamTab by remember { mutableIntStateOf(0) } // 0: Available, 1: Completed, 2: All
 
     val currentTheme = ThemeManager.currentThemeMode
 
@@ -393,6 +398,35 @@ fun MainScreen(
                     )
                 },
                 actions = {
+                    // Quick Results Shortcut Pill
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .clickable { showResultHistory = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Article,
+                                contentDescription = "Results",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Results",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
                     // Circular avatar → opens Profile & Settings
                     Box(
                         modifier = Modifier
@@ -445,11 +479,23 @@ fun MainScreen(
                         context = context
                     )
 
+                    val availableExams = remember(examsList) {
+                        examsList.filter { it.userStatus in listOf("unstarted", "waiting_teacher", "started", "upcoming") }
+                    }
+                    val completedExams = remember(examsList) {
+                        examsList.filter { it.userStatus in listOf("submitted", "expired", "blocked", "failed") }
+                    }
+                    val displayedExams = when (selectedExamTab) {
+                        0 -> availableExams
+                        1 -> completedExams
+                        else -> examsList
+                    }
+
                     // ── Section Header ─────────────────────────────────────
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -472,8 +518,37 @@ fun MainScreen(
                         }
                     }
 
+                    // ── Segmented Category Filter Chips ────────────────────
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedExamTab == 0,
+                            onClick = { selectedExamTab = 0 },
+                            label = { Text("Available (${availableExams.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        FilterChip(
+                            selected = selectedExamTab == 1,
+                            onClick = { selectedExamTab = 1 },
+                            label = { Text("Completed (${completedExams.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        FilterChip(
+                            selected = selectedExamTab == 2,
+                            onClick = { selectedExamTab = 2 },
+                            label = { Text("All (${examsList.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+
                     // ── Exam Cards or Empty State ──────────────────────────
-                    if (examsList.isEmpty()) {
+                    if (displayedExams.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -491,15 +566,25 @@ fun MainScreen(
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Text(
-                                    "No active examinations",
+                                    when (selectedExamTab) {
+                                        0 -> "No pending examinations"
+                                        1 -> "No completed examinations yet"
+                                        else -> "No active examinations"
+                                    },
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    "Check back later or contact your teacher.",
+                                    when (selectedExamTab) {
+                                        0 -> "You're all caught up! Check back when your faculty schedules a new exam."
+                                        1 -> "Completed and submitted exams will appear here."
+                                        else -> "Check back later or contact your teacher."
+                                    },
                                     fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 32.dp)
                                 )
                             }
                         }
@@ -515,7 +600,7 @@ fun MainScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(examsList) { exam ->
+                            items(displayedExams) { exam ->
                                 ExamCard(
                                     exam = exam,
                                     onStartExam = onStartExam,
@@ -967,179 +1052,224 @@ private fun ExamCard(
     onStartExam: (String) -> Unit,
     onRequestOtp: (ExamPaperItem) -> Unit
 ) {
+    val (badgeText, badgeColor, badgeTextColor) = when (exam.userStatus) {
+        "submitted" -> Triple(
+            "✓ Submitted",
+            Color(0xFFD1FAE5),
+            Color(0xFF065F46)
+        )
+        "started" -> Triple(
+            "⚡ In Progress",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.primary
+        )
+        "blocked" -> Triple(
+            "🔒 Locked",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.error
+        )
+        "failed" -> Triple(
+            "🚫 Malpractice",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.error
+        )
+        "upcoming" -> Triple(
+            "⏳ Upcoming",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        "expired" -> Triple(
+            "⌛ Expired",
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+            MaterialTheme.colorScheme.error
+        )
+        "waiting_teacher" -> Triple(
+            "🕒 Session Pending",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        else -> Triple( // "unstarted" — session started by teacher
+            "🟢 Live in Room",
+            Color(0xFFD1FAE5),
+            Color(0xFF047857)
+        )
+    }
+
+    val cardBorderColor = when (exam.userStatus) {
+        "started", "unstarted" -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+        "submitted" -> Color(0xFF10B981).copy(alpha = 0.35f)
+        "blocked", "failed" -> MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        border = BorderStroke(1.dp, cardBorderColor)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
 
-            // Title & subtitle
-            Text(
-                text = exam.title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = 20.sp
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = exam.subtitle,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Header Row: Title & Status Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = exam.title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = exam.subtitle,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeColor,
+                    border = BorderStroke(1.dp, badgeTextColor.copy(alpha = 0.15f))
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = badgeTextColor,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
 
             Spacer(Modifier.height(12.dp))
 
             // Meta info chips row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Duration
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                // Duration Chip
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            "${exam.durationMinutes} min",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                // Questions Chip
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Article,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            "${exam.questionCount} Qs",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                // Schedule Chip
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        "${exam.durationMinutes} min",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                // Questions
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Article,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        "${exam.questionCount} Qs",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                // Schedule
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.weight(2f)
-                ) {
-                    Icon(
-                        Icons.Default.DateRange,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        exam.scheduleText,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DateRange,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            exam.scheduleText,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
-            // Status badge + Action button
+            // Action button row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Status badge
-                val (badgeText, badgeColor, badgeTextColor) = when (exam.userStatus) {
-                    "submitted" -> Triple(
-                        "✓ Submitted",
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        MaterialTheme.colorScheme.primary
-                    )
-                    "started" -> Triple(
-                        "In Progress",
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        MaterialTheme.colorScheme.primary
-                    )
-                    "blocked" -> Triple(
-                        "🔒 Locked",
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
-                        MaterialTheme.colorScheme.error
-                    )
-                    "failed" -> Triple(
-                        "Malpractice",
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
-                        MaterialTheme.colorScheme.error
-                    )
-                    "upcoming" -> Triple(
-                        "Upcoming",
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    "expired" -> Triple(
-                        "Expired",
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
-                        MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                    )
-                    "waiting_teacher" -> Triple(
-                        "Waiting for Teacher",
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    else -> Triple( // "unstarted" — session started by teacher
-                        "🟢 Live in Room",
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        MaterialTheme.colorScheme.primary
-                    )
-                }
-                Surface(shape = RoundedCornerShape(8.dp), color = badgeColor) {
-                    Text(
-                        text = badgeText,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = badgeTextColor,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                    )
-                }
-
-                // Action button
                 when (exam.userStatus) {
-                    "submitted" -> Button(
+                    "submitted" -> OutlinedButton(
                         onClick = {},
                         enabled = false,
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            disabledContentColor = Color(0xFF059669)
                         ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-                    ) { Text("Submitted", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF10B981))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Submitted", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
 
                     "started" -> Button(
                         onClick = { onStartExam(exam.targetPaperId) },
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 9.dp)
-                    ) { Text("Resume", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Resume Exam", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
 
                     "blocked" -> Button(
                         onClick = {},
@@ -1149,8 +1279,12 @@ private fun ExamCard(
                             disabledContainerColor = MaterialTheme.colorScheme.errorContainer,
                             disabledContentColor = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                         ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-                    ) { Text("Blocked", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Locked by Proctor", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
 
                     "failed" -> Button(
                         onClick = {},
@@ -1160,8 +1294,8 @@ private fun ExamCard(
                             disabledContainerColor = MaterialTheme.colorScheme.errorContainer,
                             disabledContentColor = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                         ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-                    ) { Text("Malpractice", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) { Text("Malpractice Failed", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 
                     "upcoming" -> Button(
                         onClick = {},
@@ -1171,8 +1305,8 @@ private fun ExamCard(
                             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-                    ) { Text("Not Yet Open", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) { Text("Not Yet Open", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 
                     "expired" -> Button(
                         onClick = {},
@@ -1182,8 +1316,8 @@ private fun ExamCard(
                             disabledContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
                             disabledContentColor = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                         ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-                    ) { Text("Expired", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) { Text("Window Expired", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 
                     "waiting_teacher" -> Button(
                         onClick = {},
@@ -1193,8 +1327,8 @@ private fun ExamCard(
                             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-                    ) { Text("Session Not Started", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) { Text("Waiting for Faculty", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 
                     else -> Button( // "unstarted" — started by teacher & within window
                         onClick = { onRequestOtp(exam) },
@@ -1203,8 +1337,12 @@ private fun ExamCard(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 9.dp)
-                    ) { Text("Start Exam", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Start Exam", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

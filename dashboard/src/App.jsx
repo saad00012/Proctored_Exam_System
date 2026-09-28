@@ -150,7 +150,7 @@ function App() {
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
-          <p className="sidebar-section-label">Navigation</p>
+          <p className="sidebar-section-label">Monitor & Insights</p>
 
           <div
             className={`sidebar-link ${activeTab === 'overview' ? 'active' : ''}`}
@@ -166,7 +166,8 @@ function App() {
             <span className="sidebar-icon">📡</span> Live Monitor
             {metrics.activeExams > 0 && (
               <span className="badge badge-success" style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>
-                {metrics.activeExams}
+                <span className="live-pulse-dot" style={{ width: '5px', height: '5px', marginRight: '3px' }}></span>
+                {metrics.activeExams} Active
               </span>
             )}
           </div>
@@ -178,25 +179,13 @@ function App() {
             <span className="sidebar-icon">📚</span> Exam History
           </div>
 
+          <p className="sidebar-section-label" style={{ marginTop: '0.85rem' }}>Exams & Question Bank</p>
+
           <div
             className={`sidebar-link ${activeTab === 'papers' ? 'active' : ''}`}
             onClick={() => setActiveTab('papers')}
           >
             <span className="sidebar-icon">📝</span> Question Papers
-          </div>
-
-          <div
-            className={`sidebar-link ${activeTab === 'students' ? 'active' : ''}`}
-            onClick={() => setActiveTab('students')}
-          >
-            <span className="sidebar-icon">👥</span> Students
-          </div>
-
-          <div
-            className={`sidebar-link ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <span className="sidebar-icon">⚙️</span> Teacher Settings
           </div>
 
           <div
@@ -206,9 +195,25 @@ function App() {
             <span className="sidebar-icon">📖</span> Question Bank
           </div>
 
+          <p className="sidebar-section-label" style={{ marginTop: '0.85rem' }}>Students & Faculty</p>
+
+          <div
+            className={`sidebar-link ${activeTab === 'students' ? 'active' : ''}`}
+            onClick={() => setActiveTab('students')}
+          >
+            <span className="sidebar-icon">👥</span> Students Directory
+          </div>
+
+          <div
+            className={`sidebar-link ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <span className="sidebar-icon">⚙️</span> Faculty Settings
+          </div>
+
           {isSuperAdmin && (
             <>
-              <p className="sidebar-section-label" style={{ marginTop: '1rem' }}>Super Admin</p>
+              <p className="sidebar-section-label" style={{ marginTop: '0.85rem' }}>Super Admin Suite</p>
               <div
                 className={`sidebar-link ${activeTab === 'users' ? 'active' : ''}`}
                 onClick={() => setActiveTab('users')}
@@ -293,54 +298,54 @@ function App() {
       <main className="main-content">
         <header className="dashboard-header">
           <div>
-            <p
-              style={{
-                fontSize: '0.72rem',
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                fontWeight: 600
-              }}
-            >
-              {isSuperAdmin ? 'Super Admin Console' : 'Faculty Console'}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
+              <span className={`badge ${isSuperAdmin ? 'badge-primary' : 'badge-info'}`} style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {isSuperAdmin ? '🛡️ Super Admin Console' : '🎓 Faculty Console'}
+              </span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>•</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            </div>
             <h1
               style={{
-                fontSize: '1.6rem',
+                fontSize: '1.65rem',
                 fontWeight: 700,
                 letterSpacing: '-0.02em',
-                textTransform: 'capitalize',
                 color: 'var(--text-primary)'
               }}
             >
               {activeTab === 'live'
-                ? 'Live Monitor'
+                ? '📡 Live Proctoring Monitor'
                 : activeTab === 'papers'
-                ? 'Question Papers'
+                ? '📝 Question Papers & Sets'
                 : activeTab === 'students'
-                ? 'Student Directory'
+                ? '👥 Student Directory'
                 : activeTab === 'history'
-                ? 'Exam History'
+                ? '📚 Exam History & Results'
                 : activeTab === 'settings'
-                ? 'Teacher Settings'
+                ? '⚙️ Faculty Teaching Settings'
                 : activeTab === 'users'
-                ? 'User Management'
+                ? '🔐 User Management'
                 : activeTab === 'auditlog'
-                ? 'Audit Log'
+                ? '📋 Security & Audit Trail'
                 : activeTab === 'questionbank'
-                ? 'Question Bank'
+                ? '📖 Central Question Bank'
                 : activeTab === 'maintenance'
-                ? 'Database & Policies'
-                : 'Overview'}
+                ? '🗄️ Database & Policy Administration'
+                : '📊 Examination Overview'}
             </h1>
           </div>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={handleLogout}
-            style={{ gap: '0.35rem' }}
-          >
-            🚪 Logout
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleLogout}
+              style={{ gap: '0.45rem', fontWeight: 600 }}
+              title="Sign out of proctor portal"
+            >
+              <span>🚪</span> Sign Out
+            </button>
+          </div>
         </header>
 
         {/* Tab Views */}
