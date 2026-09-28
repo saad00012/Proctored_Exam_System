@@ -11,6 +11,7 @@ import UserManagement from './components/UserManagement';
 import TeacherSettings from './components/TeacherSettings';
 import ExamHistory from './components/ExamHistory';
 import DepartmentManagement from './components/DepartmentManagement';
+import AuditLog from './components/AuditLog';
 import API_BASE_URL from './config';
 
 function App() {
@@ -207,6 +208,12 @@ function App() {
                 <span className="sidebar-icon">🔐</span> User Management
               </div>
               <div
+                className={`sidebar-link ${activeTab === 'auditlog' ? 'active' : ''}`}
+                onClick={() => setActiveTab('auditlog')}
+              >
+                <span className="sidebar-icon">📋</span> Audit Log
+              </div>
+              <div
                 className={`sidebar-link ${activeTab === 'maintenance' ? 'active' : ''}`}
                 onClick={() => setActiveTab('maintenance')}
               >
@@ -310,6 +317,8 @@ function App() {
                 ? 'Teacher Settings'
                 : activeTab === 'users'
                 ? 'User Management'
+                : activeTab === 'auditlog'
+                ? 'Audit Log'
                 : activeTab === 'maintenance'
                 ? 'Database & Policies'
                 : 'Overview'}
@@ -462,6 +471,7 @@ function App() {
         {activeTab === 'students' && <StudentDirectory />}
         {activeTab === 'settings' && <TeacherSettings user={user} />}
         {activeTab === 'users' && isSuperAdmin && <UserManagement user={user} />}
+        {activeTab === 'auditlog' && isSuperAdmin && <AuditLog />}
 
         {activeTab === 'maintenance' && isSuperAdmin && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left' }}>

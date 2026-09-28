@@ -131,6 +131,7 @@ fun MainScreen(
     var activeWarningThreshold by remember { mutableStateOf(3) }
     var activeWarningSubject by remember { mutableStateOf("") }
     var activeViolationIdState by remember { mutableStateOf("") }
+    var showResultHistory by remember { mutableStateOf(false) }
 
     var selectedExamForOtp by remember { mutableStateOf<ExamPaperItem?>(null) }
     var otpInput by remember { mutableStateOf("") }
@@ -371,6 +372,9 @@ fun MainScreen(
         }
     }
 
+    if (showResultHistory) {
+        ResultHistoryScreen(onBack = { showResultHistory = false })
+    } else {
     Scaffold(
         topBar = {
             TopAppBar(

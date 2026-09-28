@@ -342,4 +342,32 @@ router.post('/database/clear-papers', verifyToken, async (req, res) => {
   }
 });
 
+// Get Audit Logs - ADMIN ONLY
+router.get('/audit-logs', verifyToken, async (req, res) => {
+  if (!req.user || (req.user.role !== 'superadmin' && req.user.role !== 'admin' && !req.user.email?.toLowerCase().startsWith('admin'))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const limitParam = parseInt(req.query.limit) || 100;
+    const action = req.query.action;
+
+    let query = db.collection('audit_logs').orderBy('timestamp', 'desc').limit(limitParam);
+    if (action) {
+      query = query.where('action', '==', action);
+    }
+
+    const snapshot = await query.get();
+    const logs = [];
+    snapshot.forEach(doc => {
+      logs.push({ id: doc.id, ...doc.data() });
+    });
+
+    res.json({ logs });
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ error: 'Failed to fetch audit logs' });
+  }
+});
+
 module.exports = router;

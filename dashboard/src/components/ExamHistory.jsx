@@ -11,6 +11,8 @@ function ExamHistory({ user }) {
   const [selectedSemester, setSelectedSemester] = useState('All');
   const [expandedExamId, setExpandedExamId] = useState(null);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [reviewingParticipant, setReviewingParticipant] = useState(null);
+  const [reviewExamGroup, setReviewExamGroup] = useState(null);
 
   const departmentOptions = ['All', ...departments];
 
@@ -561,6 +563,7 @@ function ExamHistory({ user }) {
                               <th style={{ padding: '0.85rem 1rem', fontWeight: 600, textAlign: 'center' }}>Time Taken</th>
                               <th style={{ padding: '0.85rem 1rem', fontWeight: 600, textAlign: 'center' }}>Warnings</th>
                               <th style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>Submitted At</th>
+                              <th style={{ padding: '0.85rem 1rem', fontWeight: 600, textAlign: 'center' }}>Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -642,6 +645,18 @@ function ExamHistory({ user }) {
                                   </td>
                                   <td style={{ padding: '0.85rem 1rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                                     {student.submittedAt ? formatDateTime(student.submittedAt) : 'Pending'}
+                                  </td>
+                                  <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                                    <button 
+                                      className="btn btn-secondary" 
+                                      style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                                      onClick={() => {
+                                        setReviewingParticipant(student);
+                                        setReviewExamGroup(exam);
+                                      }}
+                                    >
+                                      📋 Review
+                                    </button>
                                   </td>
                                 </tr>
                               );

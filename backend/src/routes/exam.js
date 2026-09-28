@@ -617,7 +617,9 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
       status: 'submitted',
       elapsedTime: finalElapsedTime,
       overrideTimeSeconds: 0,
-      submittedAt: new Date().toISOString()
+      submittedAt: new Date().toISOString(),
+      score,
+      totalQuestions: total
     });
 
     res.json({
@@ -629,6 +631,92 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error in /auto-submit:', error);
     res.status(500).json({ error: 'Failed to submit exam: ' + error.message });
+  }
+});
+
+// 5. Get Student Results
+router.get('/student/results', verifyToken, async (req, res) => {
+  const studentId = req.user.uid;
+  
+  try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+
+    const snapshot = await db.collection('exam_attempts')
+      .where('studentId', '==', studentId)
+      .where('status', '==', 'submitted')
+      .get();
+      
+    let results = [];
+    
+    // Process each attempt sequentially to fetch related data
+    for (const doc of snapshot.docs) {
+      const attempt = doc.data();
+      
+      // Fetch paper details
+      let paperTitle = 'Unknown Paper';
+      let subject = 'Unknown Subject';
+      let department = attempt.department || 'Unassigned';
+      let semester = attempt.semester || 'N/A';
+      
+      const paperDoc = await db.collection('papers').doc(attempt.paperId).get();
+      if (paperDoc.exists) {
+        const paperData = paperDoc.data();
+        paperTitle = paperData.title;
+        subject = paperData.subject || paperData.title;
+        if (paperData.department) department = paperData.department;
+        if (paperData.semester) semester = paperData.semester;
+      }
+      
+      let score = 0;
+      let totalQuestions = 0;
+      
+      if (attempt.score !== undefined && attempt.totalQuestions !== undefined) {
+        score = attempt.score;
+        totalQuestions = attempt.totalQuestions;
+      } else {
+        // Recalculate if not persisted
+        const qSnap = await db.collection('questions').where('paperId', '==', attempt.paperId).get();
+        totalQuestions = qSnap.size;
+        
+        const studentAnswers = attempt.answers || {};
+        qSnap.forEach(qDoc => {
+          const qData = qDoc.data();
+          const ans = studentAnswers[qDoc.id];
+          if (ans !== undefined && ans === qData.correctOptionIndex) {
+            score++;
+          }
+        });
+      }
+      
+      let percentage = 0;
+      if (totalQuestions > 0) {
+        percentage = Math.round((score / totalQuestions) * 100);
+      }
+      
+      results.push({
+        paperId: attempt.paperId,
+        paperTitle,
+        subject,
+        department,
+        semester,
+        score,
+        totalQuestions,
+        percentage,
+        submittedAt: attempt.submittedAt,
+        elapsedTime: attempt.elapsedTime,
+        warnings: attempt.warnings || 0
+      });
+    }
+    
+    // Sort by submittedAt descending
+    results.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    
+    res.json({ results });
+  } catch (error) {
+    console.error('Error fetching student results:', error);
+    res.status(500).json({ error: 'Failed to fetch results: ' + error.message });
   }
 });
 
