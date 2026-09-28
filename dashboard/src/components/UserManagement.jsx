@@ -596,7 +596,14 @@ function UserManagement({ user }) {
                   filteredStudents.map(s => (
                     <tr key={s.uid} style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <td style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--primary)' }}>{s.prnNumber || 'N/A'}</td>
-                      <td style={{ padding: '1rem 1.5rem', fontWeight: 500 }}>{s.name}</td>
+                      <td style={{ padding: '1rem 1.5rem', fontWeight: 500 }}>
+                        {s.name}
+                        {s.suspended && (
+                          <span className="badge badge-danger" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                            Suspended
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '1rem 1.5rem', color: 'var(--text-secondary)' }}>{s.email}</td>
                       <td style={{ padding: '1rem 1.5rem' }}>
                         <span className="badge badge-warning" style={{ fontSize: '0.75rem', color: '#78350f', background: '#fef3c7' }}>{s.department}</span>
@@ -610,6 +617,15 @@ function UserManagement({ user }) {
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setEditUser(s)}>Edit</button>
+                          <button
+                            className={`btn ${s.suspended ? 'btn-secondary' : 'btn-danger'}`}
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                            onClick={() => handleToggleSuspend(s)}
+                            disabled={actionLoading}
+                            title={s.suspended ? 'Unsuspend user' : 'Suspend user'}
+                          >
+                            {s.suspended ? '✓ Unsuspend' : '⊘ Suspend'}
+                          </button>
                           <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderColor: 'var(--secondary)' }} onClick={() => { setResettingUser(s); setResetPasswordMode('email'); setGeneratedResetLink(''); }}>🔑 Reset Pass</button>
                           <button className="btn btn-danger" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setDeletingUser(s)}>Delete</button>
                         </div>
