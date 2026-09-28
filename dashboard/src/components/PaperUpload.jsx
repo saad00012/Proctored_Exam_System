@@ -4,6 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { compressImageToBase64 } from '../utils/imageCompressor';
 import ExamImport from './ExamImport';
+import QuestionBank from './QuestionBank';
 import { useApp } from '../context/AppContext';
 
 
@@ -70,6 +71,7 @@ function PaperUpload({ user }) {
   const [editExamScheduleEnd, setEditExamScheduleEnd] = useState('');
   const [expandedExams, setExpandedExams] = useState({});
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
 
   // Sync default department when user profile loads
   useEffect(() => {
@@ -350,29 +352,20 @@ function PaperUpload({ user }) {
       alert("Permission Denied: You can only start exam sessions for exams that you created.");
       return;
     }
-    const examPapers = papers.filter(p => p.examId === exam.id);
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'exams', exam.id), {
-        isStarted: true,
-        examOtp: otp,
-        sessionStartedAt: new Date().toISOString(),
-        status: 'published',
-        isVisible: true,
-        isHidden: false
+      const token = await user.getIdToken(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/papers/${exam.id}/start`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isExam: true, otp })
       });
-      if (examPapers.length > 0) {
-        await Promise.all(examPapers.map(p =>
-          updateDoc(doc(db, 'papers', p.id), {
-            isStarted: true,
-            examOtp: otp,
-            sessionStartedAt: new Date().toISOString(),
-            status: 'published',
-            isVisible: true,
-            isHidden: false
-          })
-        ));
+      if (!res.ok) {
+        throw new Error('Backend failed to start exam session');
       }
       alert(`Exam session started! Room OTP Key is: ${otp}. Disclose this code to students in the examination room.`);
     } catch (err) {
@@ -600,6 +593,52 @@ function PaperUpload({ user }) {
       alert("Failed to update paper details: " + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleImportFromBank = async (bankQuestion) => {
+    if (!selectedPaper) return;
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'questions'), {
+        paperId: selectedPaper.id,
+        questionText: bankQuestion.questionText,
+        questionImageUrl: bankQuestion.questionImageUrl || null,
+        options: bankQuestion.options,
+        correctOptionIndex: bankQuestion.correctOptionIndex,
+        department: selectedPaper.department || bankQuestion.department,
+        subject: selectedPaper.subject || bankQuestion.subject || '',
+        order: questions.length,
+        importedFromBank: true,
+        importedAt: new Date().toISOString(),
+      });
+      setShowQuestionBank(false);
+      alert('✅ Question imported from bank successfully!');
+    } catch (e) {
+      alert('Failed to import: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveToBank = async (question) => {
+    try {
+      await addDoc(collection(db, 'question_bank'), {
+        questionText: question.questionText,
+        questionImageUrl: question.questionImageUrl || null,
+        options: question.options,
+        correctOptionIndex: question.correctOptionIndex,
+        subject: selectedPaper?.subject || '',
+        department: selectedPaper?.department || '',
+        tags: [],
+        createdById: user?.uid || '',
+        createdByEmail: user?.email || '',
+        createdBy: user?.name || '',
+        createdAt: new Date().toISOString(),
+      });
+      alert('✅ Question saved to bank!');
+    } catch (e) {
+      alert('Failed to save to bank: ' + e.message);
     }
   };
 

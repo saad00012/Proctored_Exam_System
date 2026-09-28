@@ -26,6 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.DateRange
@@ -136,6 +139,9 @@ fun MainScreen(
     var selectedExamForOtp by remember { mutableStateOf<ExamPaperItem?>(null) }
     var otpInput by remember { mutableStateOf("") }
     var otpError by remember { mutableStateOf("") }
+
+    var showExamInstructions by remember { mutableStateOf(false) }
+    var pendingExamPaper by remember { mutableStateOf<ExamPaperItem?>(null) }
 
     val currentTheme = ThemeManager.currentThemeMode
 
@@ -588,11 +594,11 @@ fun MainScreen(
                         } else if (targetOtp.isNotEmpty() && trimmedOtp != targetOtp) {
                             otpError = "Invalid Exam OTP. Please check the code provided by your teacher."
                         } else {
-                            val targetPaper = exam.targetPaperId
+                            pendingExamPaper = exam
                             selectedExamForOtp = null
                             otpInput = ""
                             otpError = ""
-                            onStartExam(targetPaper)
+                            showExamInstructions = true
                         }
                     },
                     enabled = otpInput.length == 6
@@ -606,6 +612,100 @@ fun MainScreen(
                     otpInput = ""
                     otpError = ""
                 }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // ── Pre-Exam Instructions Dialog ─────────────────────────────────────
+    if (showExamInstructions && pendingExamPaper != null) {
+        AlertDialog(
+            onDismissRequest = { /* force read */ },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "Exam Rules & Instructions",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        "Please read the following rules carefully before starting:",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    val rules = listOf(
+                        "📵 Do NOT switch apps or minimize this app during the exam.",
+                        "📷 Camera will be disabled for the duration of the exam.",
+                        "🖼️ Screenshots and screen recording are blocked.",
+                        "⏱️ The timer runs continuously and cannot be paused.",
+                        "⚠️ App switching will trigger a violation warning. Repeated violations will block you.",
+                        "📞 Incoming phone calls will not count as a violation.",
+                        "💾 Answers are saved automatically, even if you go offline.",
+                        "✅ Each question can only be answered once — navigation is forward only.",
+                        "🔒 Device Admin is active and will remain so until exam submission."
+                    )
+                    
+                    rules.forEach { rule ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(10.dp)
+                        ) {
+                            Text(rule, fontSize = 13.sp, lineHeight = 18.sp)
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "By tapping 'I Understand, Start Exam' you confirm that you have read and agree to these rules.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExamInstructions = false
+                        val paper = pendingExamPaper
+                        pendingExamPaper = null
+                        if (paper != null) onStartExam(paper.targetPaperId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("I Understand, Start Exam", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showExamInstructions = false
+                        pendingExamPaper = null
+                    }
+                ) {
                     Text("Cancel")
                 }
             }
