@@ -185,34 +185,33 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Gray100)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(4.dp)
                     ) {
                         Row(modifier = Modifier.fillMaxWidth()) {
                             listOf(true to "Sign In", false to "Register").forEach { (tabIsLogin, label) ->
+                                val isActive = isLogin == tabIsLogin
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(9.dp))
-                                        .background(if (isLogin == tabIsLogin) White else Color.Transparent)
-                                        .clickable { 
+                                        .background(
+                                            if (isActive) MaterialTheme.colorScheme.surface
+                                            else Color.Transparent
+                                        )
+                                        .clickable {
                                             isLogin = tabIsLogin
                                             errorMsg = ""
                                             successMsg = ""
                                             isEmailUnverified = false
                                         }
-                                        .padding(vertical = 10.dp)
-                                        .then(
-                                            if (isLogin == tabIsLogin)
-                                                Modifier.shadow(2.dp, RoundedCornerShape(9.dp))
-                                            else Modifier
-                                        ),
+                                        .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = label,
-                                        fontWeight = if (isLogin == tabIsLogin) FontWeight.SemiBold else FontWeight.Normal,
-                                        color = if (isLogin == tabIsLogin) Indigo500 else Gray400,
+                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isActive) Indigo500 else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 14.sp
                                     )
                                 }
@@ -458,13 +457,16 @@ private fun StyledTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     isPassword: Boolean = false
 ) {
+    val iconTint = MaterialTheme.colorScheme.onSurfaceVariant
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label, fontSize = 13.sp) },
-        placeholder = if (placeholder.isNotEmpty()) ({ Text(placeholder, color = Gray400, fontSize = 13.sp) }) else null,
+        placeholder = if (placeholder.isNotEmpty()) ({
+            Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), fontSize = 13.sp)
+        }) else null,
         leadingIcon = if (icon != null) ({
-            Icon(imageVector = icon, contentDescription = null, tint = Gray400, modifier = Modifier.size(18.dp))
+            Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
         }) else null,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -473,12 +475,14 @@ private fun StyledTextField(
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Indigo500,
-            unfocusedBorderColor = Gray200,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             focusedLabelColor = Indigo500,
-            unfocusedLabelColor = Gray400,
+            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             cursorColor = Indigo500,
-            focusedContainerColor = White,
-            unfocusedContainerColor = Gray50,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
         )
     )
 }
