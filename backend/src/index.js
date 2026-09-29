@@ -18,13 +18,15 @@ const rateLimit = require('express-rate-limit');
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
+  'https://exam.dnyanshree.edu.in',
+  'http://exam.dnyanshree.edu.in',
   ...(process.env.DASHBOARD_URL ? [process.env.DASHBOARD_URL] : [])
 ];
 
 // Standard Middlewares
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o)) || origin.includes('dnyanshree.edu.in')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -33,6 +35,15 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(requestLogger);
+
+// Root Health Check Endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    service: 'Proctored Exam Backend API',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Rate Limiters
 const generalLimiter = rateLimit({

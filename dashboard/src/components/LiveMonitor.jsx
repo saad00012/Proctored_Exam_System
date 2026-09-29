@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import API_BASE_URL from '../config';
 
@@ -185,30 +185,43 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     setLoading(true);
 
     try {
-      let token = (user && user.token) || '';
+      // 1. Directly clear attempts and violations from Firestore
+      if (db) {
+        const attemptsQuery = query(
+          collection(db, 'exam_attempts'),
+          where('studentId', '==', studentId),
+          where('paperId', '==', paperId)
+        );
+        const attemptsSnap = await getDocs(attemptsQuery);
+        await Promise.all(attemptsSnap.docs.map(d => deleteDoc(d.ref)));
+
+        const violationsQuery = query(
+          collection(db, 'violations'),
+          where('studentId', '==', studentId),
+          where('paperId', '==', paperId)
+        );
+        const violationsSnap = await getDocs(violationsQuery);
+        await Promise.all(violationsSnap.docs.map(d => deleteDoc(d.ref)));
+      }
+
+      // 2. Best-effort background API call to backend for audit logging
       try {
+        let token = (user && user.token) || '';
         if (auth && auth.currentUser) {
           token = await auth.currentUser.getIdToken();
         }
+        if (token && API_BASE_URL) {
+          fetch(`${API_BASE_URL}/teacher/clear-student-attempts`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ studentId, paperId })
+          }).catch(e => console.warn('Background clear log audit notify error:', e));
+        }
       } catch (e) {
-        console.warn("Using default token");
-      }
-
-      const res = await fetch(`${API_BASE_URL}/teacher/clear-student-attempts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          studentId,
-          paperId
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Server returned error.");
+        console.warn('Background notify failed:', e);
       }
 
       alert("Student logs and attempts cleared successfully! The student can now restart the exam.");
