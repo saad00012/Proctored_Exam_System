@@ -10,8 +10,8 @@
 
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
-const { admin, db } = require('../src/firebase');
+require('dotenv').config({ path: path.resolve(__dirname, '..', '..', 'backend', '.env') });
+const { admin, db } = require('../../backend/src/firebase');
 
 // Parse CLI Arguments
 const args = process.argv.slice(2).reduce((acc, arg) => {

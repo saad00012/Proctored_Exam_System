@@ -1,19 +1,6 @@
-require('dotenv').config();
-const admin = require('firebase-admin');
-
-const fs = require('fs');
 const path = require('path');
-const serviceAccountPath = path.resolve(__dirname, process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'service-account.json');
-const serviceAccount = require(serviceAccountPath);
-
-// Initialize Firebase Admin (assuming credentials in ENV just like index.js)
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-}
-
-const db = admin.firestore();
+require('dotenv').config({ path: path.resolve(__dirname, '..', '..', 'backend', '.env') });
+const { admin, db } = require('../../backend/src/firebase');
 const auth = admin.auth();
 
 async function clearUsers() {

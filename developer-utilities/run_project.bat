@@ -5,7 +5,7 @@ echo      Dnyanshree Proctored Exam Portal  ^|  Desktop PC
 echo ============================================================
 echo.
 
-:: ?? Detect Node.js / npm ?????????????????????????????????????????????????
+:: Detect Node.js / npm
 set "NPM_CMD=npm"
 
 :: Check common install paths on this machine
@@ -18,20 +18,19 @@ if exist "%LOCALAPPDATA%\Programs\nodejs\npm.cmd"            set "NPM_CMD=%LOCAL
 where npm >nul 2>&1
 if %errorlevel% equ 0 set "NPM_CMD=npm"
 
-:: ?? 1. Start Backend ??????????????????????????????????????????????????????
-echo [1/3] Starting Express Backend API  (Port 5000)...
-start "Backend ^| Proctored Exam" /D "%~dp0backend" cmd /k "%NPM_CMD%" run dev
+:: 1. Start Backend
+echo [1/3] Starting Express Backend API (Port 5000)...
+start "Backend ^| Proctored Exam" /D "%~dp0..\backend" cmd /k "%NPM_CMD%" run dev
 timeout /t 2 /nobreak >nul
 
-:: ── 2. Start Dashboard ────────────────────────────────────────────────────
-echo [2/3] Starting Teacher Dashboard  (Port 5173)...
-start "Dashboard ^| Proctored Exam" /D "%~dp0dashboard" cmd /k "%NPM_CMD%" run dev
+:: 2. Start Dashboard
+echo [2/3] Starting Teacher Dashboard (Port 5173)...
+start "Dashboard ^| Proctored Exam" /D "%~dp0..\dashboard" cmd /k "%NPM_CMD%" run dev
 timeout /t 2 /nobreak >nul
 
-:: ?? 3. ADB Port Forwarding ????????????????????????????????????????????????
+:: 3. ADB Port Forwarding
 echo [3/3] Checking ADB for Android device port forwarding...
 
-:: Search common ADB locations
 set "ADB_PATH="
 if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" set "ADB_PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"
 if exist "C:\Android\Sdk\platform-tools\adb.exe"             set "ADB_PATH=C:\Android\Sdk\platform-tools\adb.exe"
