@@ -741,10 +741,10 @@ fun ExamScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Result", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                text = if (percentage >= 50) "PASSED" else "FAILED",
+                                text = if (percentage >= 40) "PASSED" else "FAILED",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (percentage >= 50) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                color = if (percentage >= 40) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
                         }
                     }

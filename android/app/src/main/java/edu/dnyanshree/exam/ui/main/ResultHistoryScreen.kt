@@ -202,7 +202,7 @@ private fun ResultCard(result: ResultItem) {
                 }
 
                 if (percentage != null) {
-                    val isPass = percentage >= 50f
+                    val isPass = percentage >= 40f
                     val badgeColor = if (isPass) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
                     val badgeTextColor = if (isPass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                     
@@ -224,7 +224,7 @@ private fun ResultCard(result: ResultItem) {
 
             if (percentage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                val progressColor = if (percentage >= 50f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                val progressColor = if (percentage >= 40f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                 LinearProgressIndicator(
                     progress = { percentage / 100f },
                     color = progressColor,
