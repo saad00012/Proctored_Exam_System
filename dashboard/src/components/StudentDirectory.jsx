@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 
 function StudentDirectory() {
-  const { students, attempts, papers, questions } = useApp();
+  const { students, attempts, papers, questions, user, role } = useApp();
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -61,16 +61,34 @@ function StudentDirectory() {
     };
   };
 
+  // Department-scoped student list (teachers only see their own dept, superadmin sees all)
+  const isSuperAdmin = role === 'superadmin';
+  const teacherDepts = useMemo(() => {
+    if (isSuperAdmin) return null; // null = no restriction
+    const depts = user?.departments && user.departments.length > 0
+      ? user.departments
+      : (user?.department ? [user.department] : []);
+    return new Set(depts.map(d => d.toLowerCase().trim()));
+  }, [isSuperAdmin, user]);
+
+  const deptScopedStudents = useMemo(() => {
+    if (!teacherDepts) return students; // superadmin: all students
+    return students.filter(s => {
+      const studentDept = (s.department || '').toLowerCase().trim();
+      return teacherDepts.has(studentDept);
+    });
+  }, [students, teacherDepts]);
+
   // Filter students list
   const filteredStudents = useMemo(() => {
     const query = searchQuery.toLowerCase();
-    return students.filter(
+    return deptScopedStudents.filter(
       (student) =>
         (student.name || '').toLowerCase().includes(query) ||
         (student.email || '').toLowerCase().includes(query) ||
         (student.prnNumber || '').toLowerCase().includes(query)
     );
-  }, [students, searchQuery]);
+  }, [deptScopedStudents, searchQuery]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left' }}>
@@ -78,6 +96,11 @@ function StudentDirectory() {
         <h2 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Student Directory</h2>
         <p style={{ color: 'var(--text-secondary)' }}>
           Review student registrations, academic exam attempt metrics, and cumulative proctoring histories.
+          {!isSuperAdmin && user?.department && (
+            <span style={{ marginLeft: '0.5rem', color: 'var(--primary)', fontWeight: 600 }}>
+              — Showing: {user.departments && user.departments.length > 1 ? user.departments.join(', ') : user.department}
+            </span>
+          )}
         </p>
       </div>
 
