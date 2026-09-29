@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import API_BASE_URL from '../config';
+import { parseApiResponse } from '../utils/api';
 
 function LiveMonitor({ user, defaultDuration = 45 }) {
   const [attempts, setAttempts] = useState([]);
@@ -118,10 +119,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Server returned error.");
-      }
+      const data = await parseApiResponse(res);
 
       setReviewingAttempt(null);
       alert(`Access granted successfully! Student has been unblocked with assigned paper: "${data.newPaperTitle || unusedPaper.title}".`);
@@ -162,10 +160,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Server returned error.");
-      }
+      await parseApiResponse(res);
 
       setReviewingAttempt(null);
       alert("Malpractice confirmed. Session permanently closed.");
@@ -174,6 +169,25 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       alert("Failed to confirm malpractice: " + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleDeviceAdminExemption = async (attempt) => {
+    const newStatus = !attempt.deviceAdminBypass;
+    const confirmMsg = newStatus
+      ? `Allow ${attempt.studentName} to bypass Device Administrator requirement?\n\nRecommended if the student's phone (Vivo, Realme, Xiaomi, Oppo) blocks Device Admin under Android 13+ Restricted Settings.`
+      : `Re-enforce Device Administrator requirement for ${attempt.studentName}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await updateDoc(doc(db, 'exam_attempts', attempt.id), {
+        deviceAdminBypass: newStatus,
+        deviceAdminBypassedAt: newStatus ? new Date().toISOString() : null,
+        deviceAdminBypassedBy: user?.name || user?.email || 'Teacher'
+      });
+      alert(`✅ Device Admin requirement ${newStatus ? 'bypassed' : 're-enforced'} for ${attempt.studentName}.`);
+    } catch (err) {
+      alert('Failed to update Device Admin exemption: ' + err.message);
     }
   };
 
@@ -651,10 +665,23 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                                     Warnings: <strong style={{ color: attempt.warnings > 0 ? '#ef4444' : 'inherit' }}>{attempt.warnings}</strong> | 
                                     Elapsed Time: {Math.round(attempt.elapsedTime / 60)} mins | 
                                     Status: <span style={{ fontWeight: 500 }}>{attempt.status}</span>
+                                    {attempt.deviceAdminBypass && (
+                                      <span className="badge badge-warning" style={{ marginLeft: '0.4rem', fontSize: '0.68rem' }}>🔓 Admin Exempt</span>
+                                    )}
                                   </p>
                                 </div>
 
-                                <div>
+                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  {attempt.status !== 'submitted' && attempt.status !== 'malpractice_failed' && (
+                                    <button
+                                      className="btn btn-secondary"
+                                      style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                                      onClick={() => handleToggleDeviceAdminExemption(attempt)}
+                                      title={attempt.deviceAdminBypass ? 'Device Admin is bypassed. Click to re-enforce.' : 'Bypass Device Admin requirement for this student if phone restricts activation'}
+                                    >
+                                      {attempt.deviceAdminBypass ? '🔒 Enforce Admin' : '🔓 Bypass Admin'}
+                                    </button>
+                                  )}
                                   {attempt.status === 'submitted' ? (
                                     <button 
                                       className="btn btn-primary" 
@@ -893,6 +920,14 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                 disabled={loading}
               >
                 Cancel
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => handleToggleDeviceAdminExemption(reviewingAttempt)}
+                disabled={loading}
+                title="Bypass Device Admin requirement if student's phone blocks activation"
+              >
+                {reviewingAttempt.deviceAdminBypass ? '🔒 Enforce Admin' : '🔓 Bypass Admin'}
               </button>
               <button 
                 className="btn btn-danger" 

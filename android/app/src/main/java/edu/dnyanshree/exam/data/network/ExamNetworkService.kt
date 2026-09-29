@@ -75,7 +75,17 @@ class ExamNetworkService(
 
         if (responseCode !in 200..299) {
             val errorJson = try { JSONObject(responseText) } catch (_: Exception) { null }
-            val errorMsg = errorJson?.optString("error") ?: "Server returned error code $responseCode"
+            val errorMsg = if (errorJson != null && errorJson.has("error")) {
+                errorJson.optString("error")
+            } else if (responseCode == 429) {
+                "Server is busy with high exam traffic. Please wait a few seconds and try again."
+            } else if (responseCode in 502..503) {
+                "Server is temporarily unavailable. Please try again shortly."
+            } else if (responseText.isNotBlank() && responseText.length < 150 && !responseText.contains("<html", ignoreCase = true)) {
+                responseText.trim()
+            } else {
+                "Server returned error code $responseCode"
+            }
             throw Exception(errorMsg)
         }
 

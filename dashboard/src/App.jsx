@@ -14,6 +14,7 @@ import DepartmentManagement from './components/DepartmentManagement';
 import AuditLog from './components/AuditLog';
 import QuestionBank from './components/QuestionBank';
 import API_BASE_URL from './config';
+import { parseApiResponse } from './utils/api';
 
 function App() {
   const {
@@ -51,8 +52,7 @@ function App() {
           warningThreshold: parseInt(warningThreshold)
         })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const data = await parseApiResponse(response);
       alert(data.message || 'Global exam policies updated successfully!');
     } catch (err) {
       alert('Failed to save policies: ' + err.message);
@@ -77,8 +77,7 @@ function App() {
           Authorization: `Bearer ${token}`
         }
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to clear attempts');
+      const data = await parseApiResponse(response);
       alert(`✅ Database Cleaned:\n${data.message || 'All student exam attempts and logs have been reset.'}`);
       setAttempts([]);
     } catch (err) {
@@ -103,8 +102,7 @@ function App() {
           Authorization: `Bearer ${token}`
         }
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to clear question papers');
+      const data = await parseApiResponse(response);
       alert(`✅ Database Cleaned:\n${data.message || 'All question papers have been cleared.'}`);
     } catch (err) {
       alert('❌ Failed to clear question papers: ' + err.message);

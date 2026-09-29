@@ -3,6 +3,9 @@ const router = express.Router();
 const { db } = require('../firebase');
 const { verifyToken } = require('../middleware/auth');
 
+// In-memory paper duration cache (TTL: 60s) to minimize Firestore reads under heavy load
+const paperDurationCache = new Map();
+
 // 1. Start Exam
 router.post('/start-exam', verifyToken, async (req, res) => {
   let { paperId } = req.body;
@@ -489,10 +492,17 @@ router.post('/heartbeat', verifyToken, async (req, res) => {
         return;
       }
 
-      const paperDoc = await transaction.get(db.collection('papers').doc(paperId));
+      // Read duration from in-memory cache if fresh (TTL: 60s), otherwise read and cache
       let paperDuration = 2700;
-      if (paperDoc.exists && paperDoc.data().durationMinutes) {
-        paperDuration = parseInt(paperDoc.data().durationMinutes) * 60;
+      const cached = paperDurationCache.get(paperId);
+      if (cached && (Date.now() - cached.cachedAt < 60000)) {
+        paperDuration = cached.durationSeconds;
+      } else {
+        const paperDoc = await transaction.get(db.collection('papers').doc(paperId));
+        if (paperDoc.exists && paperDoc.data().durationMinutes) {
+          paperDuration = parseInt(paperDoc.data().durationMinutes) * 60;
+        }
+        paperDurationCache.set(paperId, { durationSeconds: paperDuration, cachedAt: Date.now() });
       }
 
       const startedAt = new Date(attempt.startedAt).getTime();

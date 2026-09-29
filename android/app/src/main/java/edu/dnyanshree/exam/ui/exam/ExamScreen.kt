@@ -54,6 +54,9 @@ import android.content.Intent
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.os.PowerManager
+import android.provider.Settings
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.telephony.TelephonyManager
@@ -141,11 +144,28 @@ fun ExamScreen(
     var isDeviceAdminActive by remember {
         mutableStateOf(devicePolicyManager.isAdminActive(adminComponent))
     }
+    var isDeviceAdminBypassed by remember { mutableStateOf(false) }
+    var showRestrictedSettingsHelp by remember { mutableStateOf(false) }
+    var isLockTaskActive by remember { mutableStateOf(false) }
 
     val launcherAdmin = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { _ ->
         isDeviceAdminActive = devicePolicyManager.isAdminActive(adminComponent)
+    }
+
+    // Sync Device Admin bypass exemption from teacher's LiveMonitor in real time
+    DisposableEffect(attemptId) {
+        val listener = firestore.collection("exam_attempts").document(attemptId)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null && snapshot.exists()) {
+                    val bypassed = snapshot.getBoolean("deviceAdminBypass") ?: false
+                    if (bypassed) {
+                        isDeviceAdminBypassed = true
+                    }
+                }
+            }
+        onDispose { listener.remove() }
     }
 
     // Telephony Call State checking
@@ -249,11 +269,16 @@ fun ExamScreen(
         }
     }
 
-    // Release camera when screen is disposed or exam finishes
+    // Release camera and lock task when screen is disposed or exam finishes
     DisposableEffect(Unit) {
         onDispose {
             try {
                 devicePolicyManager.setCameraDisabled(adminComponent, false)
+            } catch (_: Exception) {
+                // Ignore
+            }
+            try {
+                (context as? Activity)?.stopLockTask()
             } catch (_: Exception) {
                 // Ignore
             }
@@ -394,6 +419,13 @@ fun ExamScreen(
         if (!isExamRunning) return
         isExamRunning = false
         loading = true
+
+        try {
+            (context as? Activity)?.stopLockTask()
+        } catch (_: Exception) {}
+        try {
+            devicePolicyManager.setCameraDisabled(adminComponent, false)
+        } catch (_: Exception) {}
 
         coroutineScope.launch {
             try {
@@ -632,7 +664,7 @@ fun ExamScreen(
     LaunchedEffect(isExamRunning) {
         if (isExamRunning) {
             while (isExamRunning) {
-                delay(10000L) // Ping every 10 seconds
+                delay(25000L) // Ping every 25 seconds for optimized network and database load
                 if (!isExamRunning) break
                 
                 try {
@@ -763,8 +795,8 @@ fun ExamScreen(
         return
     }
 
-    // Hard Gate: Block exam if Device Admin is not active
-    if (!isDeviceAdminActive) {
+    // Hard Gate: Block exam if Device Admin is not active and not bypassed
+    if (!isDeviceAdminActive && !isDeviceAdminBypassed) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Card(
                 modifier = Modifier.padding(24.dp),
@@ -774,17 +806,17 @@ fun ExamScreen(
                 Column(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "Device Admin Required",
+                        text = "Security Setup Required",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "To ensure a secure exam environment, this application disables the camera for the duration of the test. You must activate Device Admin privileges to start.",
-                        fontSize = 14.sp,
+                        text = "To ensure a secure exam environment, this exam locks the screen and camera. Please activate Device Admin or use Screen Pinning mode.",
+                        fontSize = 13.sp,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -798,10 +830,85 @@ fun ExamScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Activate Device Admin")
+                        Text("1. Activate Device Admin")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            showRestrictedSettingsHelp = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("❓ Vivo / Realme / Xiaomi Fix Guide", fontSize = 13.sp)
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            val activity = context as? Activity
+                            try {
+                                activity?.startLockTask()
+                                isLockTaskActive = true
+                                isDeviceAdminBypassed = true
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Screen Pinning: ${e.message}", Toast.LENGTH_SHORT).show()
+                                isDeviceAdminBypassed = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.tertiary
+                        )
+                    ) {
+                        Text("📌 2. Use Screen Pinning Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
+        }
+
+        if (showRestrictedSettingsHelp) {
+            AlertDialog(
+                onDismissRequest = { showRestrictedSettingsHelp = false },
+                title = { Text("Restricted Settings Guide", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        Text("On Android 13+ devices (Vivo, Realme, Oppo, Xiaomi), side-loaded apps have Device Admin restricted by default.")
+                        Text("Follow these quick steps to unlock it:", fontWeight = FontWeight.SemiBold)
+                        Text("1️⃣ Tap 'Open App Settings' below.")
+                        Text("2️⃣ In the top-right corner, tap the 3 dots (⋮).")
+                        Text("3️⃣ Tap 'Allow restricted settings' and confirm your PIN or fingerprint.")
+                        Text("4️⃣ Return to this app and tap 'Activate Device Admin'.")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("💡 Alternative: You can also tap 'Use Screen Pinning Mode' to take the exam without Device Admin.", color = MaterialTheme.colorScheme.primary)
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showRestrictedSettingsHelp = false
+                            try {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Please open Settings > Apps > Dnyanshree Exam App", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    ) {
+                        Text("Open App Settings")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRestrictedSettingsHelp = false }) {
+                        Text("Close")
+                    }
+                }
+            )
         }
         return
     }

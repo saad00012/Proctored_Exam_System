@@ -112,9 +112,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     }
 
     var errorMsg by remember { mutableStateOf("") }
+    var successMsg by remember { mutableStateOf("") }
+    var isEmailUnverified by remember { mutableStateOf(false) }
+    var isResendingEmail by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
-
-
 
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -194,7 +195,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                         .weight(1f)
                                         .clip(RoundedCornerShape(9.dp))
                                         .background(if (isLogin == tabIsLogin) White else Color.Transparent)
-                                        .clickable { isLogin = tabIsLogin; errorMsg = "" }
+                                        .clickable { 
+                                            isLogin = tabIsLogin
+                                            errorMsg = ""
+                                            successMsg = ""
+                                            isEmailUnverified = false
+                                        }
                                         .padding(vertical = 10.dp)
                                         .then(
                                             if (isLogin == tabIsLogin)
@@ -216,9 +222,9 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // === Error Message ===
+                    // === Success Message ===
                     AnimatedVisibility(
-                        visible = errorMsg.isNotEmpty(),
+                        visible = successMsg.isNotEmpty(),
                         enter = fadeIn() + slideInVertically(),
                         exit = fadeOut()
                     ) {
@@ -226,17 +232,89 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Danger100)
-                                .border(1.dp, Danger500.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .background(Color(0xFFDCFCE7))
+                                .border(1.dp, Color(0xFF16A34A).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                                 .padding(12.dp)
                         ) {
                             Text(
-                                text = errorMsg,
-                                color = Danger800,
+                                text = successMsg,
+                                color = Color(0xFF15803D),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 lineHeight = 18.sp
                             )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    // === Error Message ===
+                    AnimatedVisibility(
+                        visible = errorMsg.isNotEmpty(),
+                        enter = fadeIn() + slideInVertically(),
+                        exit = fadeOut()
+                    ) {
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Danger100)
+                                    .border(1.dp, Danger500.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = errorMsg,
+                                    color = Danger800,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    lineHeight = 18.sp
+                                )
+                            }
+
+                            // === Resend Verification Email Button ===
+                            if (isEmailUnverified && isLogin) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        if (email.isNotBlank() && password.isNotBlank()) {
+                                            isResendingEmail = true
+                                            FirebaseAuth.getInstance().signInWithEmailAndPassword(email, password)
+                                                .addOnCompleteListener { signInTask ->
+                                                    if (signInTask.isSuccessful) {
+                                                        val u = signInTask.result?.user
+                                                        u?.sendEmailVerification()?.addOnCompleteListener { sendTask ->
+                                                            isResendingEmail = false
+                                                            FirebaseAuth.getInstance().signOut()
+                                                            if (sendTask.isSuccessful) {
+                                                                successMsg = "Verification link resent to $email! Please check your inbox and spam folder."
+                                                                errorMsg = ""
+                                                            } else {
+                                                                errorMsg = sendTask.exception?.message ?: "Failed to resend verification email."
+                                                            }
+                                                        }
+                                                    } else {
+                                                        isResendingEmail = false
+                                                        errorMsg = signInTask.exception?.message ?: "Please verify your password above to resend link."
+                                                    }
+                                                }
+                                        } else {
+                                            errorMsg = "Please enter your email and password above to resend the verification link."
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Indigo500),
+                                    enabled = !isResendingEmail,
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    if (isResendingEmail) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Sending Link...", fontSize = 13.sp)
+                                    } else {
+                                        Text("📩 Resend Verification Email", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                     }
@@ -317,15 +395,23 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 if (isLogin) {
                                     handleLogin(email, password, coroutineScope,
                                         onSuccess = onAuthSuccess,
-                                        onError = { errorMsg = it },
-                                        onLoading = { loading = it })
+                                        onError = { 
+                                            errorMsg = it 
+                                            successMsg = ""
+                                        },
+                                        onLoading = { loading = it },
+                                        onEmailUnverified = { isEmailUnverified = it })
                                 } else {
                                     handleRegisterStart(name, prn, email, phone, password, department, semester, coroutineScope,
                                         onSuccess = {
-                                            errorMsg = "Registration successful! Please check your email for a verification link."
+                                            successMsg = "Registration successful! A verification link has been sent to $email. Please check your inbox and spam folder, then sign in."
+                                            errorMsg = ""
                                             isLogin = true
                                         },
-                                        onError = { errorMsg = it },
+                                        onError = { 
+                                            errorMsg = it 
+                                            successMsg = ""
+                                        },
                                         onLoading = { loading = it })
                                 }
                             },
@@ -411,7 +497,8 @@ private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: S
 // Auth Flow Trigger Actions
 private fun handleLogin(
     email: String, password: String, scope: CoroutineScope,
-    onSuccess: () -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit
+    onSuccess: () -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit,
+    onEmailUnverified: (Boolean) -> Unit = {}
 ) {
     if (email.isEmpty() || password.isEmpty()) {
         onError("Please enter both email and password.")
@@ -434,9 +521,11 @@ private fun handleLogin(
                         if (user != null && !user.isEmailVerified) {
                             onLoading(false)
                             onError("Please verify your email address. A verification link was sent to $email.")
+                            onEmailUnverified(true)
                             firebaseAuth.signOut()
                             return@addOnCompleteListener
                         }
+                        onEmailUnverified(false)
 
                         user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
                             if (tokenTask.isSuccessful) {
@@ -538,32 +627,36 @@ private fun handleRegisterStart(
                             firestore.collection("users").document(uid).set(profileMap)
                         }
 
-                        // Send verification email link natively
-                        user?.sendEmailVerification()
+                        // Send verification email link natively and await network dispatch
+                        user?.sendEmailVerification()?.addOnCompleteListener { emailTask ->
+                            if (!emailTask.isSuccessful) {
+                                android.util.Log.w("AuthScreen", "sendEmailVerification failed: ${emailTask.exception?.message}")
+                            }
 
-                        // Step 3: Sync profile with backend
-                        user?.getIdToken(true)?.addOnCompleteListener { tokenTask ->
-                            val token = tokenTask.result?.token ?: ""
-                            scope.launch {
-                                try {
-                                    val profileBody = JSONObject().apply {
-                                        put("name", name)
-                                        put("phoneNumber", phone)
-                                        put("role", "student")
-                                        put("department", department)
-                                        put("semester", semester)
-                                        put("prnNumber", cleanPrn)
-                                    }.toString()
+                            // Step 3: Sync profile with backend
+                            user.getIdToken(true).addOnCompleteListener { tokenTask ->
+                                val token = tokenTask.result?.token ?: ""
+                                scope.launch {
+                                    try {
+                                        val profileBody = JSONObject().apply {
+                                            put("name", name)
+                                            put("phoneNumber", phone)
+                                            put("role", "student")
+                                            put("department", department)
+                                            put("semester", semester)
+                                            put("prnNumber", cleanPrn)
+                                        }.toString()
 
-                                    if (token.isNotEmpty()) {
-                                        makeApiRequest("/create-profile", "POST", profileBody, token)
+                                        if (token.isNotEmpty()) {
+                                            makeApiRequest("/create-profile", "POST", profileBody, token)
+                                        }
+                                    } catch (e: Exception) {
+                                        // Non-blocking: Firestore direct write already succeeded
+                                        e.printStackTrace()
+                                    } finally {
+                                        onLoading(false)
+                                        onSuccess()
                                     }
-                                } catch (e: Exception) {
-                                    // Non-blocking: Firestore direct write already succeeded
-                                    e.printStackTrace()
-                                } finally {
-                                    onLoading(false)
-                                    onSuccess()
                                 }
                             }
                         }

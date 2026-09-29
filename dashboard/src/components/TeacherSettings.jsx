@@ -3,6 +3,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
 import { useApp } from '../context/AppContext';
+import { parseApiResponse } from '../utils/api';
 
 function TeacherSettings({ user }) {
   const { departments = [] } = useApp();
@@ -122,10 +123,7 @@ function TeacherSettings({ user }) {
         })
       });
 
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.error || 'Failed to update profile');
-      }
+      const resData = await parseApiResponse(response);
 
       showToast('Profile updated successfully!', 'success');
     } catch (err) {
@@ -150,9 +148,7 @@ function TeacherSettings({ user }) {
         body: JSON.stringify({ mode: 'email' })
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to generate reset link');
-
+      const data = await parseApiResponse(response);
       showToast(data.message || 'Password reset link sent to your email.', 'info');
     } catch (err) {
       console.error("Password reset error:", err);
@@ -189,9 +185,7 @@ function TeacherSettings({ user }) {
         })
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to update password');
-
+      const data = await parseApiResponse(response);
       showToast('Password changed successfully!', 'success');
       setNewPassword('');
       setConfirmPassword('');

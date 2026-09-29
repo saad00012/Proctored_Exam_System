@@ -3,6 +3,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
 import { useApp } from '../context/AppContext';
+import { parseApiResponse } from '../utils/api';
 
 function UserManagement({ user }) {
   const { departments = [] } = useApp();
@@ -36,9 +37,29 @@ function UserManagement({ user }) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ suspended: newSuspended })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+      await parseApiResponse(res);
       showToast(`${targetUser.name} has been ${action}ed successfully.`, newSuspended ? 'danger' : 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'danger');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleVerifyEmail = async (targetUser) => {
+    const newStatus = !targetUser.emailVerified;
+    const action = newStatus ? 'verify' : 'unverify';
+    if (!window.confirm(`Are you sure you want to mark email as ${newStatus ? 'VERIFIED' : 'UNVERIFIED'} for ${targetUser.name || targetUser.email}?\n\nThis will allow the student to log in without needing email link verification.`)) return;
+    setActionLoading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/admin/users/${targetUser.uid || targetUser.id}/verify-email`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ emailVerified: newStatus })
+      });
+      await parseApiResponse(res);
+      showToast(`${targetUser.name}'s email has been ${newStatus ? 'verified' : 'unverified'} successfully.`, 'success');
     } catch (err) {
       showToast('Error: ' + err.message, 'danger');
     } finally {
@@ -604,7 +625,14 @@ function UserManagement({ user }) {
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '1rem 1.5rem', color: 'var(--text-secondary)' }}>{s.email}</td>
+                      <td style={{ padding: '1rem 1.5rem', color: 'var(--text-secondary)' }}>
+                        {s.email}
+                        {s.emailVerified ? (
+                          <span className="badge badge-success" style={{ marginLeft: '0.4rem', fontSize: '0.65rem' }}>✓ Verified</span>
+                        ) : (
+                          <span className="badge badge-warning" style={{ marginLeft: '0.4rem', fontSize: '0.65rem', background: '#fef3c7', color: '#92400e' }}>⏳ Unverified</span>
+                        )}
+                      </td>
                       <td style={{ padding: '1rem 1.5rem' }}>
                         <span className="badge badge-warning" style={{ fontSize: '0.75rem', color: '#78350f', background: '#fef3c7' }}>{s.department}</span>
                       </td>
@@ -615,7 +643,16 @@ function UserManagement({ user }) {
                         </span>
                       </td>
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                          <button
+                            className={`btn ${s.emailVerified ? 'btn-secondary' : 'btn-primary'}`}
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                            onClick={() => handleToggleVerifyEmail(s)}
+                            disabled={actionLoading}
+                            title={s.emailVerified ? 'Revoke email verification' : 'Instantly verify email for student'}
+                          >
+                            {s.emailVerified ? '✉️ Revoke' : '✉️ Verify Email'}
+                          </button>
                           <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setEditUser(s)}>Edit</button>
                           <button
                             className={`btn ${s.suspended ? 'btn-secondary' : 'btn-danger'}`}

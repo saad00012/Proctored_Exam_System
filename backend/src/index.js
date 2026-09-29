@@ -46,31 +46,27 @@ app.get('/', (req, res) => {
 });
 
 // Rate Limiters
+// General limiter skips all exam endpoints to support shared NAT/hotspots/lab networks
 const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Exam routes require individual Firebase Auth tokens; do not rate-limit by IP
+    const examPaths = ['/start-exam', '/auto-submit', '/report-violation', '/submit-answer', '/student/results', '/heartbeat', '/papers'];
+    return examPaths.some(path => req.path.startsWith(path));
+  }
+});
+
+const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 120,
   standardHeaders: true,
   legacyHeaders: false
 });
 
-const authExamLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
-const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
 app.use(generalLimiter);
-app.use('/start-exam', authExamLimiter);
-app.use('/auto-submit', authExamLimiter);
-app.use('/report-violation', authExamLimiter);
 app.use('/admin', adminLimiter);
 
 // Mount Routes

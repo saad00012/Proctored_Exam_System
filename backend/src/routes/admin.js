@@ -35,6 +35,38 @@ router.patch('/users/:uid/suspend', verifyToken, async (req, res) => {
   }
 });
 
+// Manually verify or unverify a user's email - ADMIN ONLY
+router.patch('/users/:uid/verify-email', verifyToken, async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges. Only administrators can verify emails.' });
+    }
+
+    const { uid } = req.params;
+    const { emailVerified = true } = req.body;
+
+    // 1. Update Firebase Auth record so client authentication passes
+    try {
+      await admin.auth().updateUser(uid, { emailVerified: Boolean(emailVerified) });
+    } catch (authErr) {
+      console.warn(`Could not update Firebase Auth emailVerified for ${uid}:`, authErr.message);
+    }
+
+    // 2. Update Firestore profile document
+    await db.collection('users').doc(uid).update({
+      emailVerified: Boolean(emailVerified),
+      emailVerifiedAt: emailVerified ? new Date().toISOString() : null,
+      emailVerifiedBy: req.user.email || req.user.name || 'Admin'
+    });
+
+    console.log(`[Admin] Set emailVerified=${emailVerified} for user ${uid}`);
+    res.json({ success: true, uid, emailVerified: Boolean(emailVerified) });
+  } catch (error) {
+    console.error('Error verifying email:', error);
+    res.status(500).json({ error: 'Failed to update email verification status: ' + error.message });
+  }
+});
+
 // Delete a user entirely (Auth + Firestore) - ADMIN ONLY
 router.delete('/users/:uid', verifyToken, async (req, res) => {
   try {
