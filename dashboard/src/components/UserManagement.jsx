@@ -1,9 +1,89 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
 import { useApp } from '../context/AppContext';
 import { parseApiResponse } from '../utils/api';
+
+
+// ── Compact ⋮ action menu for table rows ────────────────────────────────────
+function ActionMenu({ actions }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        style={{
+          background: 'transparent',
+          border: '1px solid var(--border-color)',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          padding: '0.3rem 0.55rem',
+          fontSize: '1rem',
+          color: 'var(--text-secondary)',
+          lineHeight: 1,
+          transition: 'background 0.15s'
+        }}
+        title="Actions"
+      >
+        ⋮
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute',
+          right: 0,
+          top: 'calc(100% + 4px)',
+          background: 'var(--bg-card, #1e293b)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '10px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+          minWidth: '170px',
+          zIndex: 200,
+          overflow: 'hidden'
+        }}>
+          {actions.map((action, i) => action === 'divider' ? (
+            <div key={i} style={{ height: '1px', background: 'var(--border-color)', margin: '3px 0' }} />
+          ) : (
+            <button
+              key={i}
+              onClick={(e) => { e.stopPropagation(); setOpen(false); action.onClick(); }}
+              disabled={action.disabled}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                width: '100%',
+                padding: '0.55rem 1rem',
+                background: 'transparent',
+                border: 'none',
+                cursor: action.disabled ? 'not-allowed' : 'pointer',
+                fontSize: '0.82rem',
+                color: action.danger ? '#f87171' : action.success ? '#34d399' : 'var(--text-primary)',
+                opacity: action.disabled ? 0.5 : 1,
+                textAlign: 'left',
+                transition: 'background 0.12s'
+              }}
+              onMouseEnter={e => { if (!action.disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ fontSize: '0.9rem', width: '18px', textAlign: 'center' }}>{action.icon}</span>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UserManagement({ user }) {
   const { departments = [] } = useApp();
@@ -590,20 +670,13 @@ function UserManagement({ user }) {
                         </div>
                       </td>
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                          <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setEditUser(t)}>Edit</button>
-                          <button
-                            className={`btn ${t.suspended ? 'btn-secondary' : 'btn-danger'}`}
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
-                            onClick={() => handleToggleSuspend(t)}
-                            disabled={actionLoading}
-                            title={t.suspended ? 'Unsuspend user' : 'Suspend user'}
-                          >
-                            {t.suspended ? '✓ Unsuspend' : '⊘ Suspend'}
-                          </button>
-                          <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderColor: 'var(--secondary)' }} onClick={() => { setResettingUser(t); setResetPasswordMode('email'); setGeneratedResetLink(''); }}>🔑 Reset Pass</button>
-                          <button className="btn btn-danger" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setDeletingUser(t)}>Delete</button>
-                        </div>
+                        <ActionMenu actions={[
+                          { icon: '✏️', label: 'Edit', onClick: () => setEditUser(t) },
+                          { icon: t.suspended ? '✓' : '⊘', label: t.suspended ? 'Unsuspend' : 'Suspend', onClick: () => handleToggleSuspend(t), disabled: actionLoading },
+                          { icon: '🔑', label: 'Reset Password', onClick: () => { setResettingUser(t); setResetPasswordMode('email'); setGeneratedResetLink(''); } },
+                          'divider',
+                          { icon: '🗑️', label: 'Delete User', onClick: () => setDeletingUser(t), danger: true },
+                        ]} />
                       </td>
                     </tr>
                   ))
@@ -643,29 +716,14 @@ function UserManagement({ user }) {
                         </span>
                       </td>
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                          <button
-                            className={`btn ${s.emailVerified ? 'btn-secondary' : 'btn-primary'}`}
-                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-                            onClick={() => handleToggleVerifyEmail(s)}
-                            disabled={actionLoading}
-                            title={s.emailVerified ? 'Revoke email verification' : 'Instantly verify email for student'}
-                          >
-                            {s.emailVerified ? '✉️ Revoke' : '✉️ Verify Email'}
-                          </button>
-                          <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setEditUser(s)}>Edit</button>
-                          <button
-                            className={`btn ${s.suspended ? 'btn-secondary' : 'btn-danger'}`}
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
-                            onClick={() => handleToggleSuspend(s)}
-                            disabled={actionLoading}
-                            title={s.suspended ? 'Unsuspend user' : 'Suspend user'}
-                          >
-                            {s.suspended ? '✓ Unsuspend' : '⊘ Suspend'}
-                          </button>
-                          <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderColor: 'var(--secondary)' }} onClick={() => { setResettingUser(s); setResetPasswordMode('email'); setGeneratedResetLink(''); }}>🔑 Reset Pass</button>
-                          <button className="btn btn-danger" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => setDeletingUser(s)}>Delete</button>
-                        </div>
+                        <ActionMenu actions={[
+                          { icon: s.emailVerified ? '✉️' : '✅', label: s.emailVerified ? 'Revoke Verification' : 'Verify Email', onClick: () => handleToggleVerifyEmail(s), disabled: actionLoading, success: !s.emailVerified },
+                          { icon: '✏️', label: 'Edit', onClick: () => setEditUser(s) },
+                          { icon: s.suspended ? '✓' : '⊘', label: s.suspended ? 'Unsuspend' : 'Suspend', onClick: () => handleToggleSuspend(s), disabled: actionLoading },
+                          { icon: '🔑', label: 'Reset Password', onClick: () => { setResettingUser(s); setResetPasswordMode('email'); setGeneratedResetLink(''); } },
+                          'divider',
+                          { icon: '🗑️', label: 'Delete User', onClick: () => setDeletingUser(s), danger: true },
+                        ]} />
                       </td>
                     </tr>
                   ))

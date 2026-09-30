@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, doc, setDoc, updateDoc, addDoc, query, where, onSnapshot, deleteDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, auth } from '../firebase';
@@ -8,6 +8,85 @@ import QuestionBank from './QuestionBank';
 import { useApp } from '../context/AppContext';
 import API_BASE_URL from '../config';
 
+
+// ── Compact ⋮ action menu for cards & rows ────────────────────────────────────
+function ActionMenu({ actions }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }} onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        style={{
+          background: 'transparent',
+          border: '1px solid var(--border-color)',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          padding: '0.3rem 0.55rem',
+          fontSize: '1rem',
+          color: 'var(--text-secondary)',
+          lineHeight: 1,
+          transition: 'background 0.15s'
+        }}
+        title="More actions"
+      >
+        ⋮
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute',
+          right: 0,
+          top: 'calc(100% + 4px)',
+          background: 'var(--bg-card, #1e293b)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '10px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+          minWidth: '180px',
+          zIndex: 200,
+          overflow: 'hidden'
+        }}>
+          {actions.filter(Boolean).map((action, i) => action === 'divider' ? (
+            <div key={i} style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
+          ) : (
+            <button
+              key={i}
+              onClick={(e) => { e.stopPropagation(); setOpen(false); action.onClick(e); }}
+              disabled={action.disabled}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                width: '100%',
+                padding: '0.55rem 1rem',
+                background: 'transparent',
+                border: 'none',
+                cursor: action.disabled ? 'not-allowed' : 'pointer',
+                fontSize: '0.82rem',
+                color: action.danger ? '#f87171' : action.success ? '#34d399' : 'var(--text-primary)',
+                opacity: action.disabled ? 0.5 : 1,
+                textAlign: 'left',
+                transition: 'background 0.12s'
+              }}
+              onMouseEnter={e => { if (!action.disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ fontSize: '0.9rem', width: '18px', textAlign: 'center' }}>{action.icon}</span>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PaperUpload({ user }) {
   const { role, departments = [], getAuthToken } = useApp();
@@ -1286,11 +1365,11 @@ function PaperUpload({ user }) {
                       </p>
                     </div>
 
-                    <div className="flex-row" style={{ gap: '0.5rem', marginLeft: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div className="flex-row" style={{ gap: '0.5rem', marginLeft: '1rem', alignItems: 'center', flexWrap: 'nowrap' }}>
                       {isExamStarted ? (
                         <button
                           className="btn btn-danger"
-                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', fontWeight: 'bold' }}
+                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                           onClick={(e) => { e.stopPropagation(); handleEndExamSession(exam); }}
                           disabled={loading || !canEditThis}
                         >
@@ -1299,12 +1378,12 @@ function PaperUpload({ user }) {
                       ) : (
                         <button
                           className="btn btn-primary"
-                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', background: 'linear-gradient(135deg,#059669,#047857)', fontWeight: 'bold' }}
+                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', background: 'linear-gradient(135deg,#059669,#047857)', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                           onClick={(e) => { e.stopPropagation(); handleStartExamSession(exam); }}
                           disabled={loading || !canEditThis}
                           title="Start exam session and generate 6-digit room key OTP for students"
                         >
-                          ▶️ Start Exam (Generate OTP)
+                          ▶️ Start Exam (OTP)
                         </button>
                       )}
 
@@ -1315,7 +1394,8 @@ function PaperUpload({ user }) {
                           padding: '0.35rem 0.75rem',
                           background: isExamVisible ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                           color: isExamVisible ? '#10b981' : '#f87171',
-                          border: isExamVisible ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                          border: isExamVisible ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                          whiteSpace: 'nowrap'
                         }}
                         onClick={(e) => { e.stopPropagation(); handleToggleExamVisibility(exam); }}
                         disabled={loading || !canEditThis}
@@ -1323,27 +1403,33 @@ function PaperUpload({ user }) {
                       >
                         {isExamVisible ? '👁️ Visible' : '🔒 Hidden'}
                       </button>
-                      {canEditThis && (
-                        <>
-                          <button className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }}
-                            onClick={() => { setEditingExamId(exam.id); setEditExamName(exam.name); setEditExamSubject(exam.subject); setEditExamDepartment(exam.department); setEditExamSemester(exam.semester || 'Semester 7'); setEditExamDuration(exam.durationMinutes || ''); setEditExamScheduleStart(exam.scheduleStart || ''); setEditExamScheduleEnd(exam.scheduleEnd || ''); setExpandedExams(prev => ({ ...prev, [exam.id]: true })); }}>
-                            ✏️ Edit
-                          </button>
-                          <button className="btn btn-danger" style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }} onClick={e => handleDeleteExam(exam.id, e)} disabled={loading}>
-                            🗑️
-                          </button>
-                        </>
-                      )}
-                      {/* Download button — available to all users (admin + teachers) */}
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem', background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
-                        onClick={(e) => handleDownloadExamAsExcel(exam, e)}
-                        disabled={loading}
-                        title="Download all paper sets as Excel — same format as upload template"
-                      >
-                        📥 Download .xlsx
-                      </button>
+
+                      <ActionMenu actions={[
+                        { icon: '📥', label: 'Download .xlsx', onClick: (e) => handleDownloadExamAsExcel(exam, e) },
+                        canEditThis && {
+                          icon: '✏️',
+                          label: 'Edit Exam Details',
+                          onClick: () => {
+                            setEditingExamId(exam.id);
+                            setEditExamName(exam.name);
+                            setEditExamSubject(exam.subject);
+                            setEditExamDepartment(exam.department);
+                            setEditExamSemester(exam.semester || 'Semester 7');
+                            setEditExamDuration(exam.durationMinutes || '');
+                            setEditExamScheduleStart(exam.scheduleStart || '');
+                            setEditExamScheduleEnd(exam.scheduleEnd || '');
+                            setExpandedExams(prev => ({ ...prev, [exam.id]: true }));
+                          }
+                        },
+                        canEditThis && 'divider',
+                        canEditThis && {
+                          icon: '🗑️',
+                          label: 'Delete Exam',
+                          onClick: (e) => handleDeleteExam(exam.id, e),
+                          danger: true,
+                          disabled: loading
+                        }
+                      ]} />
                     </div>
                   </div>
 
@@ -1450,12 +1536,30 @@ function PaperUpload({ user }) {
                                 <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.72rem', ...(isPaperVisible ? {} : { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }) }}>
                                   {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
                                 </span>
-                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={(e) => handleTogglePaperVisibility(paper, e)} disabled={loading}>
-                                  {isPaperVisible ? 'Hide' : 'Publish'}
+                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.78rem' }} onClick={() => setSelectedPaper(paper)}>
+                                  Open
                                 </button>
-                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={() => setSelectedPaper(paper)}>Open</button>
-                                <button className="btn btn-secondary" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={() => { setDuplicatingPaperId(paper.id); setDuplicatePaperTitle(paper.title + ' (Copy)'); }}>⧉ Duplicate</button>
-                                <button className="btn btn-danger" style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
+                                <ActionMenu actions={[
+                                  {
+                                    icon: isPaperVisible ? '🔒' : '👁️',
+                                    label: isPaperVisible ? 'Hide from App' : 'Publish Set',
+                                    onClick: (e) => handleTogglePaperVisibility(paper, e),
+                                    disabled: loading
+                                  },
+                                  {
+                                    icon: '⧉',
+                                    label: 'Duplicate Set',
+                                    onClick: () => { setDuplicatingPaperId(paper.id); setDuplicatePaperTitle(paper.title + ' (Copy)'); }
+                                  },
+                                  'divider',
+                                  {
+                                    icon: '🗑️',
+                                    label: 'Delete Set',
+                                    onClick: (e) => handleDeletePaper(paper.id, e),
+                                    danger: true,
+                                    disabled: loading
+                                  }
+                                ]} />
                               </div>
                             </div>
                             {duplicatingPaperId === paper.id && (
@@ -1514,27 +1618,43 @@ function PaperUpload({ user }) {
                             Department: <strong>{paper.department}</strong> | Created: {formatCreatedDate(paper.createdAt)}
                           </p>
                         </div>
-                        <div className="flex-row" style={{ gap: '0.75rem', alignItems: 'center' }}>
+                        <div className="flex-row" style={{ gap: '0.5rem', alignItems: 'center' }}>
                           {isPaperStarted ? (
-                            <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleEndPaperSession(paper, e)} disabled={loading || !canEditPaper}>
+                            <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={e => { e.stopPropagation(); handleEndPaperSession(paper, e); }} disabled={loading || !canEditPaper}>
                               ⏹️ End Session
                             </button>
                           ) : (
-                            <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)' }} onClick={e => handleStartPaperSession(paper, e)} disabled={loading || !canEditPaper}>
+                            <button className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#059669,#047857)', whiteSpace: 'nowrap' }} onClick={e => { e.stopPropagation(); handleStartPaperSession(paper, e); }} disabled={loading || !canEditPaper}>
                               ▶️ Start Exam (OTP)
                             </button>
                           )}
                           <span className={`badge ${isPaperVisible ? 'badge-success' : 'badge-warning'}`} style={!isPaperVisible ? { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' } : {}}>
                             {isPaperVisible ? '👁️ Visible' : '🔒 Hidden'}
                           </span>
-                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleTogglePaperVisibility(paper, e)} disabled={loading || !canEditPaper}>
-                            {isPaperVisible ? '🔒 Hide' : '👁️ Publish'}
+                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>
+                            Open
                           </button>
-                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setSelectedPaper(paper); }}>Open</button>
-                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => { e.stopPropagation(); setDuplicatingPaperId(paper.id); setDuplicatePaperTitle(paper.title + ' (Copy)'); }}>⧉ Duplicate</button>
-                          {canEditPaper && (
-                            <button className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={e => handleDeletePaper(paper.id, e)} disabled={loading}>Delete</button>
-                          )}
+                          <ActionMenu actions={[
+                            {
+                              icon: isPaperVisible ? '🔒' : '👁️',
+                              label: isPaperVisible ? 'Hide from App' : 'Publish Paper',
+                              onClick: (e) => handleTogglePaperVisibility(paper, e),
+                              disabled: loading || !canEditPaper
+                            },
+                            {
+                              icon: '⧉',
+                              label: 'Duplicate Paper',
+                              onClick: () => { setDuplicatingPaperId(paper.id); setDuplicatePaperTitle(paper.title + ' (Copy)'); }
+                            },
+                            canEditPaper && 'divider',
+                            canEditPaper && {
+                              icon: '🗑️',
+                              label: 'Delete Paper',
+                              onClick: (e) => handleDeletePaper(paper.id, e),
+                              danger: true,
+                              disabled: loading
+                            }
+                          ]} />
                         </div>
                       </div>
                       {duplicatingPaperId === paper.id && (
