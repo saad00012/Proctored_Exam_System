@@ -94,10 +94,10 @@ function QuestionBank({ onImportQuestion }) {
 
   const filteredQuestions = questions.filter(q => {
     if (!isSuperAdmin) {
-      const qDept = (q.department || '').toLowerCase().trim();
-      const isMine = q.createdById === user?.uid || (q.createdByEmail && q.createdByEmail.toLowerCase() === user?.email?.toLowerCase());
-      const isMyDept = teacherDepts.has(qDept);
-      if (!isMine && !isMyDept) return false;
+      const isMine = (q.createdById && q.createdById === user?.uid) ||
+                     (q.createdByEmail && q.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+                     (q.createdBy && q.createdBy.toLowerCase() === user?.name?.toLowerCase());
+      if (!isMine) return false;
     }
 
     if (deptFilter !== 'All' && q.department !== deptFilter) return false;

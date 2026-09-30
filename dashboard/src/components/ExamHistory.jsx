@@ -76,11 +76,32 @@ function ExamHistory({ user }) {
     return `${m}m ${s}s`;
   };
 
-  // Group papers by Subject / Exam
+  const isSuperAdmin = role === 'superadmin' || user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
+
+  // Filter papers and exams strictly by creator for non-SuperAdmin teachers
+  const scopedPapers = React.useMemo(() => {
+    if (isSuperAdmin) return papers;
+    return papers.filter(p =>
+      (p.createdById && p.createdById === user?.uid) ||
+      (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+      (p.createdBy && p.createdBy.toLowerCase() === user?.name?.toLowerCase())
+    );
+  }, [papers, isSuperAdmin, user]);
+
+  const scopedExams = React.useMemo(() => {
+    if (isSuperAdmin) return exams;
+    return exams.filter(ex =>
+      (ex.createdById && ex.createdById === user?.uid) ||
+      (ex.createdByEmail && ex.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+      (ex.createdBy && ex.createdBy.toLowerCase() === user?.name?.toLowerCase())
+    );
+  }, [exams, isSuperAdmin, user]);
+
+  // Group papers by Subject / Exam (using scopedPapers and scopedExams)
   const subjectsMap = new Map();
 
-  // Populate from papers collection
-  papers.forEach(p => {
+  // Populate from scoped papers
+  scopedPapers.forEach(p => {
     const subjKey = p.subject || p.title || 'General Examination';
     if (!subjectsMap.has(subjKey)) {
       subjectsMap.set(subjKey, {
@@ -103,8 +124,8 @@ function ExamHistory({ user }) {
     if (p.semester && grp.semester === 'N/A') grp.semester = p.semester;
   });
 
-  // Also match any configured exam groups from `exams` collection
-  exams.forEach(ex => {
+  // Also match any configured exam groups from scopedExams
+  scopedExams.forEach(ex => {
     const subjKey = ex.subject || ex.name || 'General Examination';
     if (!subjectsMap.has(subjKey)) {
       subjectsMap.set(subjKey, {
@@ -225,34 +246,8 @@ function ExamHistory({ user }) {
     };
   });
 
-  const [viewScope, setViewScope] = useState('my_exams'); // 'my_exams' or 'dept_exams'
-
-  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
-  const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
-    ? user.departments
-    : (user?.department ? [user.department] : []);
-
-  // Filter exams
+  // Filter exams according to search and department selection
   const filteredExams = conductedExams.filter(exam => {
-    if (!isSuperAdmin) {
-      const isMyExam = (exam.createdById && exam.createdById === user?.uid) ||
-        (exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-        (exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-        (exam.papers && exam.papers.some(p =>
-          p.createdById === user?.uid ||
-          (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-          (p.createdBy && p.createdBy.toLowerCase() === user?.name?.toLowerCase())
-        ));
-
-      if (viewScope === 'my_exams') {
-        if (!isMyExam) return false;
-      } else if (viewScope === 'dept_exams') {
-        const examDept = (exam.department || '').toLowerCase().trim();
-        const inMyDept = teacherDepts.some(d => d.toLowerCase().trim() === examDept);
-        if (!inMyDept && !isMyExam) return false;
-      }
-    }
-
     const matchesDept = selectedDept === 'All' || exam.department === selectedDept;
     const matchesSem = selectedSemester === 'All' || exam.semester === selectedSemester;
     const matchesSearch = exam.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -364,19 +359,7 @@ function ExamHistory({ user }) {
           />
         </div>
 
-        {!isSuperAdmin && (
-          <div style={{ flex: 1, minWidth: '190px' }}>
-            <select
-              className="input-field"
-              value={viewScope}
-              onChange={(e) => setViewScope(e.target.value)}
-              style={{ fontWeight: 600, color: 'var(--primary)' }}
-            >
-              <option value="my_exams">👤 My Conducted Exams</option>
-              <option value="dept_exams">🏛️ All Department Exams</option>
-            </select>
-          </div>
-        )}
+
 
         <div style={{ flex: 1, minWidth: '180px' }}>
           <select

@@ -419,13 +419,11 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       if (!isSuperAdmin) {
         const paperObj = papers.find(p => p.id === student.latestAttempt.paperId);
         const isMyPaper = paperObj && (
-          paperObj.createdById === user?.uid ||
+          (paperObj.createdById && paperObj.createdById === user?.uid) ||
           (paperObj.createdByEmail && paperObj.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-          (paperObj.createdBy && paperObj.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-          teacherDeptSet.has((paperObj.department || '').toLowerCase().trim())
+          (paperObj.createdBy && paperObj.createdBy.toLowerCase() === user?.name?.toLowerCase())
         );
-        const isMyStudentDept = teacherDeptSet.has((student.department || '').toLowerCase().trim());
-        if (!isMyPaper && !isMyStudentDept) {
+        if (!isMyPaper) {
           return false;
         }
       }
