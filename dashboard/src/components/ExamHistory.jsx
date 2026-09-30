@@ -248,12 +248,12 @@ function ExamHistory({ user }) {
 
   // Filter exams according to search and department selection
   const filteredExams = conductedExams.filter(exam => {
-    const matchesDept = selectedDept === 'All' || exam.department === selectedDept;
+    // Department filter — only applicable for SuperAdmin (teachers can't cross-filter by dept)
+    if (isSuperAdmin && selectedDept !== 'All' && exam.department !== selectedDept) return false;
     const matchesSem = selectedSemester === 'All' || exam.semester === selectedSemester;
     const matchesSearch = exam.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          exam.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          exam.department.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesDept && matchesSem && matchesSearch;
+                          exam.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSem && matchesSearch;
   });
 
   // Export CSV for an exam
@@ -299,10 +299,15 @@ function ExamHistory({ user }) {
     document.body.removeChild(link);
   };
 
-  // Overall metrics
+  // Overall metrics — scoped to this teacher's own exams only
+  const scopedAttempts = React.useMemo(() => {
+    const scopedPaperIds = new Set(scopedPapers.map(p => p.id));
+    return attempts.filter(a => scopedPaperIds.has(a.paperId));
+  }, [attempts, scopedPapers]);
+
   const totalConducted = conductedExams.filter(e => e.totalParticipants > 0).length;
-  const totalSubmissions = attempts.filter(a => a.status === 'submitted').length;
-  const totalAllParticipants = attempts.length;
+  const totalSubmissions = scopedAttempts.filter(a => a.status === 'submitted').length;
+  const totalAllParticipants = scopedAttempts.length;
   const allSubmittedPercentages = conductedExams.flatMap(e => e.participants.filter(p => p.status === 'submitted').map(p => p.percentage));
   const overallAvgScore = allSubmittedPercentages.length > 0
     ? Math.round(allSubmittedPercentages.reduce((a, b) => a + b, 0) / allSubmittedPercentages.length)
@@ -353,25 +358,26 @@ function ExamHistory({ user }) {
           <input
             type="text"
             className="input-field"
-            placeholder="🔍 Search exam name, subject, or department..."
+            placeholder="🔍 Search exam name or subject..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-
-
-        <div style={{ flex: 1, minWidth: '180px' }}>
-          <select
-            className="input-field"
-            value={selectedDept}
-            onChange={(e) => setSelectedDept(e.target.value)}
-          >
-            {departmentOptions.map(d => (
-              <option key={d} value={d}>{d === 'All' ? 'All Departments' : d}</option>
-            ))}
-          </select>
-        </div>
+        {/* Only SuperAdmin can filter by department — teachers see only their own exams */}
+        {isSuperAdmin && (
+          <div style={{ flex: 1, minWidth: '180px' }}>
+            <select
+              className="input-field"
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+            >
+              {departmentOptions.map(d => (
+                <option key={d} value={d}>{d === 'All' ? 'All Departments' : d}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ flex: 1, minWidth: '140px' }}>
           <select
@@ -385,6 +391,7 @@ function ExamHistory({ user }) {
           </select>
         </div>
       </div>
+
 
       {/* Exams List */}
       {filteredExams.length === 0 ? (
