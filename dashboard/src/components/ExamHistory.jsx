@@ -225,17 +225,32 @@ function ExamHistory({ user }) {
     };
   });
 
+  const [viewScope, setViewScope] = useState('my_exams'); // 'my_exams' or 'dept_exams'
+
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
+  const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
+    ? user.departments
+    : (user?.department ? [user.department] : []);
 
   // Filter exams
   const filteredExams = conductedExams.filter(exam => {
     if (!isSuperAdmin) {
-      const isMyExam = (exam.papers && exam.papers.some(p =>
-        p.createdById === user?.uid ||
-        (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-        p.createdBy === user?.name
-      )) || exam.department === user?.department;
-      if (!isMyExam) return false;
+      const isMyExam = (exam.createdById && exam.createdById === user?.uid) ||
+        (exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+        (exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
+        (exam.papers && exam.papers.some(p =>
+          p.createdById === user?.uid ||
+          (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+          (p.createdBy && p.createdBy.toLowerCase() === user?.name?.toLowerCase())
+        ));
+
+      if (viewScope === 'my_exams') {
+        if (!isMyExam) return false;
+      } else if (viewScope === 'dept_exams') {
+        const examDept = (exam.department || '').toLowerCase().trim();
+        const inMyDept = teacherDepts.some(d => d.toLowerCase().trim() === examDept);
+        if (!inMyDept && !isMyExam) return false;
+      }
     }
 
     const matchesDept = selectedDept === 'All' || exam.department === selectedDept;
@@ -348,6 +363,20 @@ function ExamHistory({ user }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+
+        {!isSuperAdmin && (
+          <div style={{ flex: 1, minWidth: '190px' }}>
+            <select
+              className="input-field"
+              value={viewScope}
+              onChange={(e) => setViewScope(e.target.value)}
+              style={{ fontWeight: 600, color: 'var(--primary)' }}
+            >
+              <option value="my_exams">👤 My Conducted Exams</option>
+              <option value="dept_exams">🏛️ All Department Exams</option>
+            </select>
+          </div>
+        )}
 
         <div style={{ flex: 1, minWidth: '180px' }}>
           <select

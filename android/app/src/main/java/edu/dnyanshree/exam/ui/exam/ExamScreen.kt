@@ -197,7 +197,7 @@ fun ExamScreen(
     var serverScore by remember { mutableIntStateOf(0) }
     var serverTotal by remember { mutableIntStateOf(0) }
     
-    var markedForReview by remember { mutableStateOf<Set<String>>(emptySet()) }
+
 
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var showWarningDialog by remember { mutableStateOf(false) }
@@ -1060,14 +1060,6 @@ fun ExamScreen(
                             )
                         }
                     }
-                    
-                    Button(
-                        onClick = { submitExam() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Text("Submit", fontSize = 13.sp)
-                    }
                 }
             )
         },
@@ -1095,20 +1087,14 @@ fun ExamScreen(
                         val qId = questions[idx].id
                         val isAnswered = selectedAnswers.containsKey(qId)
                         val isCurrent = currentQuestionIdx == idx
-                        val isMarked = markedForReview.contains(qId)
-                        
+
                         val bgColor = when {
                             isCurrent -> MaterialTheme.colorScheme.primary
-                            isMarked && isAnswered -> Color(0xFFF59E0B)  // amber: answered+marked
-                            isMarked -> Color(0xFFFDE68A)                // light amber: marked but unanswered  
-                            isAnswered -> Color(0xFF10B981)               // green: answered
+                            isAnswered -> Color(0xFF10B981)   // green: answered
                             else -> MaterialTheme.colorScheme.surface
                         }
-                        
                         val textColor = when {
                             isCurrent -> MaterialTheme.colorScheme.onPrimary
-                            isMarked && isAnswered -> Color.White
-                            isMarked -> Color(0xFF78350F)
                             isAnswered -> Color.White
                             else -> MaterialTheme.colorScheme.onSurface
                         }
@@ -1119,7 +1105,10 @@ fun ExamScreen(
                                 .aspectRatio(1f)
                                 .clip(CircleShape)
                                 .background(bgColor)
-                                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), CircleShape)
+                                .clickable(enabled = idx > currentQuestionIdx) {
+                                    currentQuestionIdx = idx
+                                }
                         ) {
                             Text(
                                 text = "${idx + 1}",
@@ -1135,20 +1124,17 @@ fun ExamScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Blue = current
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
                         Text("Current", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    // Green = answered
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Box(Modifier.size(10.dp).background(Color(0xFF10B981), CircleShape))
                         Text("Answered", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    // Amber = marked
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(Modifier.size(10.dp).background(Color(0xFFF59E0B), CircleShape))
-                        Text("Marked", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.surface, CircleShape).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), CircleShape))
+                        Text("Not Answered", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -1328,15 +1314,21 @@ fun ExamScreen(
                         }
                     }
 
-                    // Clear Answer button (only if answered)
-                    if (selectedAnswers.containsKey(currentQuestion.id)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
+                    // ── Single Action Row: [Clear Answer] ←→ [Skip & Next / Next / Submit] ──
+                    val isCurrentAnswered = selectedAnswers.containsKey(currentQuestion.id)
+                    val isLastQuestion = currentQuestionIdx >= questions.size - 1
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Left: Clear Answer (only visible when an answer is selected)
+                        if (isCurrentAnswered) {
                             TextButton(
                                 onClick = {
-                                    // Remove from local map + sync
                                     offlineAnswerManager.clearAnswer(activePaperId, currentQuestion.id)
                                     selectedAnswers = selectedAnswers.toMutableMap().apply {
                                         remove(currentQuestion.id)
@@ -1346,79 +1338,39 @@ fun ExamScreen(
                             ) {
                                 Text(
                                     "✕ Clear Answer",
-                                    fontSize = 12.sp,
+                                    fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.error
                                 )
                             }
+                        } else {
+                            // Empty spacer to keep the navigation button right-aligned
+                            Spacer(Modifier.width(1.dp))
                         }
-                    }
 
-                    // Navigation Buttons Row (Forward-only progress: Skip allowed, Back forbidden)
-                    val isCurrentAnswered = selectedAnswers.containsKey(currentQuestion.id)
-                    val isLastQuestion = currentQuestionIdx >= questions.size - 1
-
-                    // Mark for Review toggle
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        val isMarked = markedForReview.contains(currentQuestion.id)
-                        OutlinedButton(
-                            onClick = {
-                                markedForReview = if (isMarked) {
-                                    markedForReview - currentQuestion.id
-                                } else {
-                                    markedForReview + currentQuestion.id
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isMarked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isMarked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = if (isMarked) "🚩 Marked for Review" else "🏳 Mark for Review",
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                        // Right: Navigation / Submit
                         if (!isLastQuestion) {
                             if (isCurrentAnswered) {
                                 Button(
                                     onClick = { currentQuestionIdx += 1 },
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(10.dp)
                                 ) {
-                                    Text("Next Question →", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Next →", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             } else {
                                 OutlinedButton(
                                     onClick = { currentQuestionIdx += 1 },
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(10.dp)
                                 ) {
-                                    Text("Skip & Next →", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text("Skip & Next →", fontSize = 13.sp)
                                 }
                             }
                         } else {
                             Button(
                                 onClick = { submitExam() },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("Finish & Submit Exam ✓", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("✓ Finish & Submit", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

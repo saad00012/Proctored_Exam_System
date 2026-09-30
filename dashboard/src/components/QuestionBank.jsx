@@ -85,7 +85,21 @@ function QuestionBank({ onImportQuestion }) {
     }
   };
 
+  const teacherDepts = React.useMemo(() => {
+    const depts = Array.isArray(user?.departments) && user.departments.length > 0
+      ? user.departments
+      : (user?.department ? [user.department] : []);
+    return new Set(depts.map(d => d.toLowerCase().trim()));
+  }, [user]);
+
   const filteredQuestions = questions.filter(q => {
+    if (!isSuperAdmin) {
+      const qDept = (q.department || '').toLowerCase().trim();
+      const isMine = q.createdById === user?.uid || (q.createdByEmail && q.createdByEmail.toLowerCase() === user?.email?.toLowerCase());
+      const isMyDept = teacherDepts.has(qDept);
+      if (!isMine && !isMyDept) return false;
+    }
+
     if (deptFilter !== 'All' && q.department !== deptFilter) return false;
     if (subjectFilter && !q.subject.toLowerCase().includes(subjectFilter.toLowerCase())) return false;
     if (searchTerm && !q.questionText.toLowerCase().includes(searchTerm.toLowerCase())) return false;

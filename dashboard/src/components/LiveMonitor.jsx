@@ -410,6 +410,10 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     });
 
     const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
+    const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
+      ? user.departments
+      : (user?.department ? [user.department] : []);
+    const teacherDeptSet = new Set(teacherDepts.map(d => d.toLowerCase().trim()));
 
     return studentSummaries.filter(student => {
       if (!isSuperAdmin) {
@@ -417,10 +421,11 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         const isMyPaper = paperObj && (
           paperObj.createdById === user?.uid ||
           (paperObj.createdByEmail && paperObj.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-          paperObj.createdBy === user?.name ||
-          paperObj.department === user?.department
+          (paperObj.createdBy && paperObj.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
+          teacherDeptSet.has((paperObj.department || '').toLowerCase().trim())
         );
-        if (!isMyPaper && student.department !== user?.department) {
+        const isMyStudentDept = teacherDeptSet.has((student.department || '').toLowerCase().trim());
+        if (!isMyPaper && !isMyStudentDept) {
           return false;
         }
       }
