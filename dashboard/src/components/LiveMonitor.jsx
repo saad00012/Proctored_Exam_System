@@ -410,10 +410,6 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     });
 
     const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
-    const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
-      ? user.departments
-      : (user?.department ? [user.department] : []);
-    const teacherDeptSet = new Set(teacherDepts.map(d => d.toLowerCase().trim()));
 
     return studentSummaries.filter(student => {
       if (!isSuperAdmin) {
@@ -455,7 +451,17 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
     });
   };
 
-  const availableDepartments = ['All', ...new Set(papers.map(p => p.department).filter(Boolean))];
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
+
+  // Department dropdown only shows departments from this teacher's own papers (or all for SuperAdmin)
+  const myPapers = isSuperAdmin
+    ? papers
+    : papers.filter(p =>
+        (p.createdById && p.createdById === user?.uid) ||
+        (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+        (p.createdBy && p.createdBy.toLowerCase() === user?.name?.toLowerCase())
+      );
+  const availableDepartments = ['All', ...new Set(myPapers.map(p => p.department).filter(Boolean))];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', textAlign: 'left' }}>
@@ -484,16 +490,19 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ maxWidth: '300px', flex: '1 1 200px' }}
             />
-            <select 
-              className="input-field" 
-              value={selectedDepartment} 
-              onChange={(e) => setSelectedDepartment(e.target.value)}
-              style={{ maxWidth: '200px' }}
-            >
-              {availableDepartments.map(sub => (
-                <option key={sub} value={sub}>{sub}</option>
-              ))}
-            </select>
+            {/* Department filter — SuperAdmin only */}
+            {isSuperAdmin && (
+              <select 
+                className="input-field" 
+                value={selectedDepartment} 
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                style={{ maxWidth: '200px' }}
+              >
+                {availableDepartments.map(sub => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+            )}
             <select 
               className="input-field" 
               value={selectedStatus} 
@@ -507,6 +516,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
               <option value="in_progress">In Progress</option>
             </select>
           </div>
+
 
           {loading ? (
             <p>Loading session logs...</p>

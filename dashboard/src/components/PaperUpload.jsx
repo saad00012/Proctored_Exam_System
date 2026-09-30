@@ -188,31 +188,21 @@ function PaperUpload({ user }) {
     }
   }, [selectedPaper]);
 
-  // Permission helper: Super Admin has full access; Teachers can only access papers they created or in their teaching branches
+  // Permission helper: strict creator-only check — teachers can only access papers they created
   const canModifyExam = (exam) => {
     if (isSuperAdmin) return true;
     if (!exam) return false;
-    const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
-      ? user.departments
-      : (user?.department ? [user.department] : []);
-
     return (exam.createdById && exam.createdById === user?.uid) ||
-           (!exam.createdById && exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-           (!exam.createdById && !exam.createdByEmail && exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-           (!exam.createdById && !exam.createdByEmail && !exam.createdBy && teacherDepts.includes(exam.department));
+           (exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+           (exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase());
   };
 
   const canModifyPaper = (paper) => {
     if (isSuperAdmin) return true;
     if (!paper) return false;
-    const teacherDepts = Array.isArray(user?.departments) && user.departments.length > 0
-      ? user.departments
-      : (user?.department ? [user.department] : []);
-
     return (paper.createdById && paper.createdById === user?.uid) ||
-           (!paper.createdById && paper.createdByEmail && paper.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-           (!paper.createdById && !paper.createdByEmail && paper.createdBy && paper.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-           (!paper.createdById && !paper.createdByEmail && !paper.createdBy && teacherDepts.includes(paper.department));
+           (paper.createdByEmail && paper.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+           (paper.createdBy && paper.createdBy.toLowerCase() === user?.name?.toLowerCase());
   };
 
   // Distinct creators list for Super Admin dropdown

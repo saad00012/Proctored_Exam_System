@@ -16,35 +16,32 @@ export function useRealtimeMetrics() {
       : (user?.department ? [user.department] : []);
   }, [user]);
 
-  // Check if a paper belongs to the current teacher
+  // Strict creator check — no department fallback
   const isMyPaper = useMemo(() => {
     return (paper) => {
       if (isSuperAdmin) return true;
       if (!paper) return false;
       return (
         (paper.createdById && paper.createdById === user?.uid) ||
-        (!paper.createdById && paper.createdByEmail && paper.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-        (!paper.createdById && !paper.createdByEmail && paper.createdBy && paper.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-        (!paper.createdById && !paper.createdByEmail && !paper.createdBy && teacherDepts.includes(paper.department))
+        (paper.createdByEmail && paper.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+        (paper.createdBy && paper.createdBy.toLowerCase() === user?.name?.toLowerCase())
       );
     };
-  }, [isSuperAdmin, user, teacherDepts]);
+  }, [isSuperAdmin, user]);
 
-  // Check if an exam belongs to the current teacher
   const isMyExam = useMemo(() => {
     return (exam) => {
       if (isSuperAdmin) return true;
       if (!exam) return false;
       return (
         (exam.createdById && exam.createdById === user?.uid) ||
-        (!exam.createdById && exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-        (!exam.createdById && !exam.createdByEmail && exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase()) ||
-        (!exam.createdById && !exam.createdByEmail && !exam.createdBy && teacherDepts.includes(exam.department))
+        (exam.createdByEmail && exam.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+        (exam.createdBy && exam.createdBy.toLowerCase() === user?.name?.toLowerCase())
       );
     };
-  }, [isSuperAdmin, user, teacherDepts]);
+  }, [isSuperAdmin, user]);
 
-  // Scoped papers and exams
+  // Scoped papers and exams — strictly creator-based for teachers
   const scopedPapers = useMemo(() => {
     return isSuperAdmin ? papers : papers.filter(isMyPaper);
   }, [papers, isSuperAdmin, isMyPaper]);
@@ -53,18 +50,12 @@ export function useRealtimeMetrics() {
     return isSuperAdmin ? exams : exams.filter(isMyExam);
   }, [exams, isSuperAdmin, isMyExam]);
 
-  // Scoped attempts (attempts on this teacher's papers or by students in teacher's department)
+  // Scoped attempts — only attempts on this teacher's created papers
   const scopedAttempts = useMemo(() => {
     if (isSuperAdmin) return attempts;
     const scopedPaperIds = new Set(scopedPapers.map(p => p.id));
-    return attempts.filter(att => {
-      if (scopedPaperIds.has(att.paperId)) return true;
-      const paper = papers.find(p => p.id === att.paperId);
-      if (paper && isMyPaper(paper)) return true;
-      if (att.department && teacherDepts.includes(att.department)) return true;
-      return false;
-    });
-  }, [attempts, isSuperAdmin, scopedPapers, papers, isMyPaper, teacherDepts]);
+    return attempts.filter(att => scopedPaperIds.has(att.paperId));
+  }, [attempts, isSuperAdmin, scopedPapers]);
 
   const metrics = useMemo(() => {
     let activeExams = 0;
@@ -79,9 +70,10 @@ export function useRealtimeMetrics() {
       warningsTotal += att.warnings || 0;
     });
 
+    // Students who have attempted this teacher's exams (for teachers); all students (for superadmin)
     const totalStudents = isSuperAdmin
       ? students.length
-      : students.filter(s => teacherDepts.includes(s.department) || teacherDepts.includes(s.course)).length;
+      : new Set(scopedAttempts.map(a => a.studentId).filter(Boolean)).size;
 
     const totalTeachers = teachers.length;
     const totalPapers = scopedPapers.length;
@@ -97,7 +89,7 @@ export function useRealtimeMetrics() {
       totalPapers,
       totalExams
     };
-  }, [scopedAttempts, isSuperAdmin, students, teachers, teacherDepts, scopedPapers, scopedExams]);
+  }, [scopedAttempts, isSuperAdmin, students, teachers, scopedPapers, scopedExams]);
 
   const liveAlerts = useMemo(() => {
     const alerts = [];
