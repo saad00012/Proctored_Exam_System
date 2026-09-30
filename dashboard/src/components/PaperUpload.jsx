@@ -596,6 +596,152 @@ function PaperUpload({ user }) {
     }
   };
 
+  // Download an entire exam (all paper sets) as an Excel file in the exact upload format
+  const handleDownloadExamAsExcel = async (exam, e) => {
+    if (e) e.stopPropagation();
+    setLoading(true);
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+
+      // Fetch all paper sets belonging to this exam
+      const papersSnap = await getDocs(query(collection(db, 'papers'), where('examId', '==', exam.id)));
+      const examPapers = [];
+      papersSnap.forEach(d => examPapers.push({ id: d.id, ...d.data() }));
+      examPapers.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+
+      // Fetch all questions for these papers
+      const paperIds = examPapers.map(p => p.id);
+      const questionsByPaper = {};
+      for (const pid of paperIds) {
+        const qSnap = await getDocs(query(collection(db, 'questions'), where('paperId', '==', pid)));
+        const qs = [];
+        qSnap.forEach(d => qs.push({ id: d.id, ...d.data() }));
+        qs.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+        questionsByPaper[pid] = qs;
+      }
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Proctored Exam System';
+
+      // ── Exam Info sheet (matches upload template exactly) ──────────────────
+      const HDR_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+      const LABEL_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
+      const INPUT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+      const INPUT_BORDER = { bottom: { style: 'medium', color: { argb: 'FFBFBFBF' } } };
+
+      const info = wb.addWorksheet('Exam Info');
+      info.columns = [{ width: 36 }, { width: 48 }];
+
+      const r1 = info.addRow(['EXAM CONFIGURATION — Fill Column B only', '']);
+      r1.height = 26;
+      ['A1', 'B1'].forEach(addr => {
+        const c = info.getCell(addr);
+        c.fill = HDR_FILL;
+        c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+        c.alignment = { vertical: 'middle' };
+      });
+
+      const r2 = info.addRow(['Yellow cells are editable. Do NOT rename sheets.', '']);
+      ['A2', 'B2'].forEach(addr => {
+        info.getCell(addr).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+      });
+      r2.getCell(1).font = { italic: true, color: { argb: 'FF888888' }, size: 10 };
+
+      const addInfoRow = (label, value = '') => {
+        const r = info.addRow([label, value]);
+        r.height = 22;
+        r.getCell(1).font = { bold: true };
+        r.getCell(1).fill = LABEL_FILL;
+        r.getCell(1).alignment = { vertical: 'middle' };
+        r.getCell(2).fill = INPUT_FILL;
+        r.getCell(2).border = INPUT_BORDER;
+        r.getCell(2).alignment = { vertical: 'middle' };
+      };
+
+      // Rows 3–10 matching the upload parser: B3=examName, B4=subject, B5=dept, B6=sem, B7=duration, B8=start, B9=end, B10=totalQ
+      const totalQPerSet = Math.max(...examPapers.map(p => (questionsByPaper[p.id] || []).length), 0);
+      addInfoRow('Exam Name *', exam.name || '');
+      addInfoRow('Subject / Course *', exam.subject || '');
+      addInfoRow('Department * (select from dropdown)', exam.department || '');
+      addInfoRow('Semester * (select from dropdown)', exam.semester || '');
+      addInfoRow('Duration (minutes) *', exam.durationMinutes || '');
+      addInfoRow('Schedule Start (YYYY-MM-DD HH:MM) *', exam.scheduleStart || '');
+      addInfoRow('Schedule End   (YYYY-MM-DD HH:MM) *', exam.scheduleEnd || '');
+      addInfoRow('Total Questions Per Set *', totalQPerSet || '');
+
+      // ── Set A / B / C / D sheets ────────────────────────────────────────────
+      const SET_NAMES = ['Set A', 'Set B', 'Set C', 'Set D'];
+      const HDR_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      const ALT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F8FF' } };
+
+      SET_NAMES.forEach(setName => {
+        const sheet = wb.addWorksheet(setName);
+        sheet.columns = [
+          { width: 5 }, { width: 70 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 17 }
+        ];
+
+        const hdr = sheet.addRow(['No.', 'Question Text *', 'Option A *', 'Option B *', 'Option C *', 'Option D *', 'Correct (1-4) *']);
+        hdr.height = 32;
+        hdr.eachCell(cell => {
+          cell.fill = HDR_FILL;
+          cell.font = HDR_FONT;
+          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        });
+        sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+
+        // Find the paper matching this set name (Set A, Set B, etc.)
+        const matchingPaper = examPapers.find(p =>
+          p.title === setName ||
+          p.title?.toLowerCase() === setName.toLowerCase()
+        );
+        const qs = matchingPaper ? (questionsByPaper[matchingPaper.id] || []) : [];
+
+        // Write questions (up to 100 rows minimum, or actual count)
+        const rowCount = Math.max(qs.length, 100);
+        for (let i = 0; i < rowCount; i++) {
+          const q = qs[i];
+          const optA = q?.options?.[0]?.text || '';
+          const optB = q?.options?.[1]?.text || '';
+          const optC = q?.options?.[2]?.text || '';
+          const optD = q?.options?.[3]?.text || '';
+          const correct = q != null ? (q.correctOptionIndex + 1) : '';
+
+          const row = sheet.addRow([i + 1, q?.questionText || '', optA, optB, optC, optD, correct]);
+          row.height = 20;
+          row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+          row.getCell(1).font = { color: { argb: 'FF888888' } };
+          row.getCell(2).alignment = { wrapText: true, vertical: 'middle' };
+          if ((i + 1) % 2 === 0) {
+            [2, 3, 4, 5, 6, 7].forEach(col => { row.getCell(col).fill = ALT_FILL; });
+          }
+          row.getCell(7).dataValidation = {
+            type: 'list', allowBlank: true, formulae: ['"1,2,3,4"'],
+            showErrorMessage: true, errorStyle: 'stop',
+            errorTitle: 'Invalid Answer', error: '1=Option A, 2=Option B, 3=Option C, 4=Option D.'
+          };
+          row.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+      });
+
+      // Generate and download
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = (exam.name || 'Exam').replace(/[^a-zA-Z0-9]/g, '_');
+      a.href = url;
+      a.download = `${safeName}_Questions.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Failed to download exam: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteQuestion = async (questionId) => {
     if (!window.confirm("Are you sure you want to delete this question?")) {
       return;
@@ -1188,6 +1334,16 @@ function PaperUpload({ user }) {
                           </button>
                         </>
                       )}
+                      {/* Download button — available to all users (admin + teachers) */}
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem', background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                        onClick={(e) => handleDownloadExamAsExcel(exam, e)}
+                        disabled={loading}
+                        title="Download all paper sets as Excel — same format as upload template"
+                      >
+                        📥 Download .xlsx
+                      </button>
                     </div>
                   </div>
 
