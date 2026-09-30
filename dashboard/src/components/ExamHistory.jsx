@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { exportStyledExcelGradeSheet, printCollegeGradeSheet } from '../utils/gradeSheetExporter';
 
 function ExamHistory({ user }) {
-  const { exams, papers, questions, attempts, students, departments = [] } = useApp();
+  const { exams, papers, questions, attempts, students, departments = [], role } = useApp();
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
