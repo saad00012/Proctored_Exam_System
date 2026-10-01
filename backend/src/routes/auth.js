@@ -19,7 +19,7 @@ router.post('/register-check', async (req, res) => {
     return res.status(400).json({ error: 'Email and phone number are required.' });
   }
 
-  const domain = email.substring(email.lastIndexOf('@') + 1);
+  const domain = email.substring(email.lastIndexOf('@') + 1).trim().toLowerCase();
 
   if (!db) {
     const isValid = domain === 'dnyanshree.edu.in';

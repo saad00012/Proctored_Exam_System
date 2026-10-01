@@ -51,6 +51,7 @@ import edu.dnyanshree.exam.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -513,6 +514,24 @@ private fun handleLogin(
     scope.launch {
 
 
+        // Domain Whitelist Check
+        val domain = email.substringAfter("@", "").trim().lowercase()
+        var isDomainValid = (domain == "dnyanshree.edu.in")
+        try {
+            val domainDoc = FirebaseFirestore.getInstance().collection("allowed_domains").document(domain).get().await()
+            if (domainDoc.exists()) {
+                isDomainValid = domainDoc.getBoolean("isActive") == true
+            }
+        } catch (e: Exception) {
+            isDomainValid = (domain == "dnyanshree.edu.in")
+        }
+
+        if (!isDomainValid) {
+            onLoading(false)
+            onError("Access restricted: @$domain is not an authorized institutional email domain.")
+            return@launch
+        }
+
         // Live Firebase Sign-In Flow
         try {
             val firebaseAuth = FirebaseAuth.getInstance()
@@ -589,25 +608,49 @@ private fun handleRegisterStart(
     onLoading(true)
     scope.launch {
         try {
-            // Step 1: Call Backend to check if Domain is whitelisted (with local fallback if backend offline)
-            var allowed = true
-            try {
-                val checkBody = JSONObject().apply {
-                    put("email", email)
-                    put("phoneNumber", phone)
-                }.toString()
+            // Step 1: Validate email domain strictly against Firestore allowed_domains & whitelist
+            val domain = email.substringAfter("@", "").trim().lowercase()
+            if (domain.isBlank() || !domain.contains(".")) {
+                onLoading(false)
+                onError("Please enter a valid institutional email address.")
+                return@launch
+            }
 
-                val checkResponse = makeApiRequest("/register-check", "POST", checkBody)
-                allowed = checkResponse.optBoolean("allowed", true)
+            var allowed = false
+            try {
+                // Check Firestore allowed_domains collection
+                val firestore = FirebaseFirestore.getInstance()
+                val domainDoc = firestore.collection("allowed_domains").document(domain).get().await()
+                if (domainDoc.exists()) {
+                    allowed = domainDoc.getBoolean("isActive") == true
+                } else {
+                    allowed = (domain == "dnyanshree.edu.in")
+                }
             } catch (e: Exception) {
-                // If backend check is unreachable, allow valid domain pattern check locally
-                val domain = email.substringAfter("@", "")
-                allowed = domain.isNotEmpty()
+                // Offline fallback - strictly lock to primary college domain
+                allowed = (domain == "dnyanshree.edu.in")
+            }
+
+            // Backend validation
+            if (allowed) {
+                try {
+                    val checkBody = JSONObject().apply {
+                        put("email", email)
+                        put("phoneNumber", phone)
+                    }.toString()
+
+                    val checkResponse = makeApiRequest("/register-check", "POST", checkBody)
+                    if (checkResponse.has("allowed")) {
+                        allowed = checkResponse.optBoolean("allowed", false)
+                    }
+                } catch (e: Exception) {
+                    // If network error occurred, keep Firestore whitelist evaluation
+                }
             }
 
             if (!allowed) {
                 onLoading(false)
-                onError("Registration rejected: domain is not whitelisted.")
+                onError("Registration rejected: @$domain is not a whitelisted college domain. Please use your @dnyanshree.edu.in email.")
                 return@launch
             }
 
