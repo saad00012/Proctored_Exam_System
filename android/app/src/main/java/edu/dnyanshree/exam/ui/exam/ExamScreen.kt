@@ -562,7 +562,8 @@ fun ExamScreen(
                         val optObj = optionsArray.getJSONObject(j)
                         val optText = optObj.getString("text")
                         val optImg = optObj.optString("imageUrl").takeIf { it.isNotEmpty() && it != "null" }
-                        parsedOptions.add(Option(optText, optImg))
+                        val origIdx = optObj.optInt("originalIndex", j)
+                        parsedOptions.add(Option(optText, optImg, origIdx))
                     }
                     qList.add(Question(id, text, imgUrl, parsedOptions, correctIndex, subject))
                 }
@@ -1238,12 +1239,12 @@ fun ExamScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         currentQuestion.options.forEachIndexed { optIdx, option ->
-                            val isSelected = currentSelectedOpt == optIdx
+                            val isSelected = currentSelectedOpt == option.originalIndex
                             
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { autoSaveAnswer(currentQuestion.id, optIdx) },
+                                    .clickable { autoSaveAnswer(currentQuestion.id, option.originalIndex) },
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                                 ),
