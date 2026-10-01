@@ -13,6 +13,7 @@ import ExamHistory from './components/ExamHistory';
 import DepartmentManagement from './components/DepartmentManagement';
 import AuditLog from './components/AuditLog';
 import QuestionBank from './components/QuestionBank';
+import HelpCenter from './components/HelpCenter';
 import API_BASE_URL from './config';
 import { parseApiResponse } from './utils/api';
 
@@ -209,6 +210,13 @@ function App() {
             <span className="sidebar-icon">⚙️</span> Faculty Settings
           </div>
 
+          <div
+            className={`sidebar-link ${activeTab === 'help' ? 'active' : ''}`}
+            onClick={() => setActiveTab('help')}
+          >
+            <span className="sidebar-icon">❓</span> Help & Support
+          </div>
+
           {isSuperAdmin && (
             <>
               <p className="sidebar-section-label" style={{ marginTop: '0.85rem' }}>Super Admin Suite</p>
@@ -329,6 +337,8 @@ function App() {
                 ? '📋 Security & Audit Trail'
                 : activeTab === 'questionbank'
                 ? '📖 Central Question Bank'
+                : activeTab === 'help'
+                ? '❓ Help & Support Center'
                 : activeTab === 'maintenance'
                 ? '🗄️ Database & Policy Administration'
                 : '📊 Examination Overview'}
@@ -490,6 +500,7 @@ function App() {
         {activeTab === 'users' && isSuperAdmin && <UserManagement user={user} />}
         {activeTab === 'auditlog' && isSuperAdmin && <AuditLog />}
         {activeTab === 'questionbank' && <QuestionBank />}
+        {activeTab === 'help' && <HelpCenter />}
 
         {activeTab === 'maintenance' && isSuperAdmin && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', textAlign: 'left' }}>
