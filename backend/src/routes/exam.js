@@ -6,6 +6,30 @@ const { verifyToken } = require('../middleware/auth');
 // In-memory paper duration cache (TTL: 60s) to minimize Firestore reads under heavy load
 const paperDurationCache = new Map();
 
+// Deterministic pseudo-random number generator for consistent shuffling across app restarts
+function createSeededRandom(seedStr) {
+  let h = 2166136261 >>> 0;
+  const str = String(seedStr || 'default_seed');
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+  }
+  return function() {
+    h += 0x6D2B79F5;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffleArrayWithRng(array, rng) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 // 1. Start Exam
 router.post('/start-exam', verifyToken, async (req, res) => {
   let { paperId } = req.body;
@@ -171,9 +195,41 @@ const parseScheduleDate = (dateStr) => {
       } else {
         console.log(`🔁 No unused papers remaining. Student ${studentId} is resuming current paper ${paperId}.`);
       }
+    } else {
+      // First-time attempt for this subject: Randomly assign an unused paper set from published sets if multiple exist
+      const existingSameSubjectAttempt = priorAttempts.find(att => {
+        const attSubject = getSubjectForPaper(att.paperId);
+        return attSubject === paperSubject && att.status === 'started';
+      });
+
+      if (!existingSameSubjectAttempt) {
+        let candidatePapers = [];
+        const queryRef = paperObj.examId
+          ? db.collection('papers').where('examId', '==', paperObj.examId).where('status', '==', 'published')
+          : db.collection('papers').where('subject', '==', paperSubject).where('status', '==', 'published');
+        
+        const papersSnapshot = await queryRef.get();
+        papersSnapshot.forEach(doc => {
+          const d = doc.data();
+          if (d.isVisible !== false && !d.isHidden) {
+            candidatePapers.push({ id: doc.id, ...d });
+          }
+        });
+
+        const usedPaperIds = new Set(priorAttempts.map(att => att.paperId));
+        const unusedPapers = candidatePapers.filter(p => !usedPaperIds.has(p.id));
+
+        if (unusedPapers.length > 0) {
+          const selectedPaper = unusedPapers[Math.floor(Math.random() * unusedPapers.length)];
+          paperId = selectedPaper.id;
+          paperTitle = selectedPaper.title;
+          paperObj = selectedPaper;
+          console.log(`🎲 Randomly assigned student ${studentId} to paper set "${paperTitle}" (${paperId})`);
+        }
+      }
     }
 
-    // Recompute attemptId using final (possibly reassigned) paperId
+    // Recompute attemptId using final (possibly randomized/reassigned) paperId
     const attemptId = `${studentId}_${paperId}`;
 
     // 4. Calculate total elapsed time across prior attempts in this subject
@@ -289,9 +345,23 @@ const parseScheduleDate = (dateStr) => {
       questionsList.push({ id: doc.id, ...doc.data() });
     });
 
-    const publicQuestions = questionsList.map(q => {
+    // 1. Deterministically shuffle questions for this student attempt
+    const rng = createSeededRandom(attemptId);
+    const shuffledQuestions = shuffleArrayWithRng(questionsList, rng);
+
+    // 2. Deterministically shuffle options per question, attaching originalIndex for accurate grading
+    const publicQuestions = shuffledQuestions.map((q, qIdx) => {
       const qCopy = { ...q };
       delete qCopy.correctOptionIndex;
+
+      if (Array.isArray(q.options) && q.options.length > 0) {
+        const optionsWithOrig = q.options.map((opt, origIdx) => ({
+          ...opt,
+          originalIndex: origIdx
+        }));
+        const qRng = createSeededRandom(`${attemptId}_q_${q.id || qIdx}`);
+        qCopy.options = shuffleArrayWithRng(optionsWithOrig, qRng);
+      }
       return qCopy;
     });
 

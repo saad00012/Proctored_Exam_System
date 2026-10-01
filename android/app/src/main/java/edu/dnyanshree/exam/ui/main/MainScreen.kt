@@ -321,12 +321,13 @@ fun MainScreen(
                         targetPaper = unusedPaper?.id ?: (violationAttempt.getString("paperId") ?: "")
                     }
 
-                    // Never attempted — assign first unused set
+                    // Never attempted — randomly assign an unused set from available sets
                     else -> {
                         val attemptedIds = subjectAttempts.map { it.getString("paperId") ?: "" }
-                        val unusedPaper = subjectPapers.firstOrNull { !attemptedIds.contains(it.id) }
+                        val unusedPapers = subjectPapers.filter { !attemptedIds.contains(it.id) }
+                        val randomSet = if (unusedPapers.isNotEmpty()) unusedPapers.random() else subjectPapers.first()
                         finalStatus = "unstarted"
-                        targetPaper = unusedPaper?.id ?: subjectPapers.first().id
+                        targetPaper = randomSet.id
                     }
                 }
 

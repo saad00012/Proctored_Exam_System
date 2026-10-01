@@ -11,7 +11,8 @@ data class Question(
 
 data class Option(
     val text: String,
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val originalIndex: Int = 0
 )
 
 data class ExamPaperItem(
