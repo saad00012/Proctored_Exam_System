@@ -78,6 +78,11 @@ const verifyToken = async (req, res, next) => {
       req.user.department = data.department || 'Unassigned';
       req.user.semester = data.semester || 'N/A';
       req.user.prnNumber = data.prnNumber || 'N/A';
+
+      // Auto-sync email verification status from token if updated
+      if (decodedToken.email_verified && !data.emailVerified) {
+        db.collection('users').doc(decodedToken.uid).update({ emailVerified: true }).catch(() => {});
+      }
     } else {
       // Auto-heal: If user doc is missing in Firestore, resolve from Firebase Auth
       let resolvedName = decodedToken.name || (email ? email.split('@')[0] : 'User');
@@ -99,7 +104,7 @@ const verifyToken = async (req, res, next) => {
       req.user.semester = 'N/A';
       req.user.prnNumber = 'N/A';
 
-      // Heal user doc in Firestore in background
+      // Heal user doc in Firestore in background using merge to protect concurrent writes
       db.collection('users').doc(decodedToken.uid).set({
         uid: decodedToken.uid,
         name: resolvedName,
@@ -109,8 +114,9 @@ const verifyToken = async (req, res, next) => {
         semester: 'N/A',
         prnNumber: 'N/A',
         collegeDomain: domain,
+        emailVerified: !!decodedToken.email_verified,
         createdAt: new Date().toISOString()
-      }).catch(err => console.warn('Could not auto-heal user doc in Firestore:', err.message));
+      }, { merge: true }).catch(err => console.warn('Could not auto-heal user doc in Firestore:', err.message));
     }
 
     next();

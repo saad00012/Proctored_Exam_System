@@ -535,11 +535,24 @@ private fun handleLogin(
                             if (tokenTask.isSuccessful) {
                                 val token = tokenTask.result?.token ?: ""
                                 
-                                // Save FCM token
+                                // Save FCM token and sync emailVerified status to Firestore
                                 com.google.firebase.messaging.FirebaseMessaging.getInstance().token
                                     .addOnSuccessListener { fcmToken ->
                                         FirebaseFirestore.getInstance().collection("users").document(user.uid)
-                                            .update("fcmToken", fcmToken)
+                                            .update(mapOf(
+                                                "fcmToken" to fcmToken,
+                                                "emailVerified" to true
+                                            ))
+                                            .addOnFailureListener {
+                                                // Fallback if update fails
+                                                FirebaseFirestore.getInstance().collection("users").document(user.uid)
+                                                    .update("emailVerified", true)
+                                                    .addOnFailureListener { /* silent */ }
+                                            }
+                                    }
+                                    .addOnFailureListener {
+                                        FirebaseFirestore.getInstance().collection("users").document(user.uid)
+                                            .update("emailVerified", true)
                                             .addOnFailureListener { /* silent */ }
                                     }
                                 
