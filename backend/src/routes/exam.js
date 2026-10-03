@@ -54,7 +54,7 @@ router.post('/start-exam', verifyToken, async (req, res) => {
     if (!paperDoc.exists) {
       return res.status(404).json({ error: 'Exam paper not found.' });
     }
-    const paperObj = paperDoc.data();
+    let paperObj = paperDoc.data();
     const paperDepartment = paperObj.department;
     let paperTitle = paperObj.title;
     const paperSubject = paperObj.subject || paperObj.title || '';
@@ -191,6 +191,7 @@ const parseScheduleDate = (dateStr) => {
         const selectedPaper = unusedPapers[Math.floor(Math.random() * unusedPapers.length)];
         paperId = selectedPaper.id;
         paperTitle = selectedPaper.title;
+        paperObj = selectedPaper;
         console.log(`🔁 Reassigning student ${studentId} to new paper set ${paperId} after violation.`);
       } else {
         console.log(`🔁 No unused papers remaining. Student ${studentId} is resuming current paper ${paperId}.`);
