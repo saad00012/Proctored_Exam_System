@@ -259,6 +259,15 @@ function App() {
             <span className="sidebar-icon">👥</span> Students Directory
           </div>
 
+          {!isSuperAdmin && (
+            <div
+              className={`sidebar-link ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <span className="sidebar-icon">🎓</span> Manage Students
+            </div>
+          )}
+
           <div
             className={`sidebar-link ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
@@ -388,7 +397,7 @@ function App() {
                 : activeTab === 'settings'
                 ? '⚙️ Faculty Teaching Settings'
                 : activeTab === 'users'
-                ? '🔐 User Management'
+                ? (isSuperAdmin ? '🔐 User Management' : '🎓 Department Student Management')
                 : activeTab === 'auditlog'
                 ? '📋 Security & Audit Trail'
                 : activeTab === 'questionbank'
@@ -553,7 +562,7 @@ function App() {
         {activeTab === 'papers' && <PaperUpload user={user} />}
         {activeTab === 'students' && <StudentDirectory />}
         {activeTab === 'settings' && <TeacherSettings user={user} />}
-        {activeTab === 'users' && isSuperAdmin && <UserManagement user={user} />}
+        {activeTab === 'users' && <UserManagement user={user} />}
         {activeTab === 'auditlog' && isSuperAdmin && <AuditLog />}
         {activeTab === 'questionbank' && <QuestionBank />}
         {activeTab === 'help' && <HelpCenter />}

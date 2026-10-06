@@ -87,7 +87,15 @@ function ActionMenu({ actions }) {
 
 function UserManagement({ user }) {
   const { departments = [] } = useApp();
-  const [activeTab, setActiveTab] = useState('teachers'); // 'teachers' | 'students'
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
+
+  // Faculty user's allowed departments
+  const facultyDepts = Array.isArray(user?.departments) && user.departments.length > 0
+    ? user.departments
+    : (user?.department ? [user.department] : []);
+  const availableDepts = isSuperAdmin ? departments : facultyDepts;
+
+  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'teachers' : 'students'); // 'teachers' | 'students'
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
   const [attempts, setAttempts] = useState([]);
@@ -149,28 +157,28 @@ function UserManagement({ user }) {
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDept, setSelectedDept] = useState('All');
+  const [selectedDept, setSelectedDept] = useState(isSuperAdmin ? 'All' : (availableDepts[0] || 'All'));
   const [selectedSem, setSelectedSem] = useState('All');
 
   // Create User form state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createRole, setCreateRole] = useState('teacher'); // default
+  const [createRole, setCreateRole] = useState(isSuperAdmin ? 'teacher' : 'student');
   const [newName, setNewName] = useState('');
   const [newPrn, setNewPrn] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newDept, setNewDept] = useState(departments[0] || 'Computer Science & Engineering');
-  const [newDepts, setNewDepts] = useState([departments[0] || 'Computer Science & Engineering']);
+  const [newDept, setNewDept] = useState(availableDepts[0] || departments[0] || 'Computer Science & Engineering');
+  const [newDepts, setNewDepts] = useState([availableDepts[0] || departments[0] || 'Computer Science & Engineering']);
   const [newSem, setNewSem] = useState('Semester 7');
   const [newPhone, setNewPhone] = useState('');
 
   // Sync newDepts when departments load
   useEffect(() => {
-    if (departments.length > 0 && (!newDepts || newDepts.length === 0)) {
-      setNewDepts([departments[0]]);
-      setNewDept(departments[0]);
+    if (availableDepts.length > 0 && (!newDepts || newDepts.length === 0)) {
+      setNewDepts([availableDepts[0]]);
+      setNewDept(availableDepts[0]);
     }
-  }, [departments]);
+  }, [availableDepts]);
 
   const toggleNewDept = (dept) => {
     if (newDepts.includes(dept)) {
@@ -479,6 +487,12 @@ function UserManagement({ user }) {
   });
 
   const filteredStudents = students.filter((s) => {
+    // If not Super Admin, strictly restrict to faculty's department(s)
+    if (!isSuperAdmin) {
+      const isAllowed = facultyDepts.includes('All') || facultyDepts.includes(s.department);
+      if (!isAllowed) return false;
+    }
+
     const matchesSearch =
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -533,54 +547,59 @@ function UserManagement({ user }) {
 
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2>User Administration</h2>
-          <p>Create faculty accounts, manage student scopes, and configure credential recoveries.</p>
+          <h2>{isSuperAdmin ? 'User Administration' : 'Department Student Management'}</h2>
+          <p>{isSuperAdmin 
+            ? 'Create faculty accounts, manage student scopes, and configure credential recoveries.' 
+            : `Manage, edit, verify, or reset credentials for students in your department (${facultyDepts.join(', ')}).`}
+          </p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setCreateRole(activeTab === 'teachers' ? 'teacher' : 'student'); setShowCreateModal(true); }}>
-          ➕ Register User
+        <button className="btn btn-primary" onClick={() => { setCreateRole(isSuperAdmin && activeTab === 'teachers' ? 'teacher' : 'student'); setShowCreateModal(true); }}>
+          ➕ {isSuperAdmin ? 'Register User' : 'Register Student'}
         </button>
       </div>
 
-      {/* Tabs Row */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid var(--border-color)',
-        marginBottom: '1.5rem',
-        gap: '0.5rem'
-      }}>
-        <button 
-          onClick={() => { setActiveTab('teachers'); setSearchQuery(''); setSelectedDept('All'); setSelectedSem('All'); }}
-          style={{
-            padding: '0.8rem 1.5rem',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'teachers' ? '3px solid var(--primary)' : '3px solid transparent',
-            color: activeTab === 'teachers' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: '1rem',
-            transition: 'var(--transition-fast)'
-          }}
-        >
-          👩‍🏫 Teachers <span className="badge badge-info" style={{ marginLeft: '0.25rem' }}>{teachers.length}</span>
-        </button>
-        <button 
-          onClick={() => { setActiveTab('students'); setSearchQuery(''); setSelectedDept('All'); setSelectedSem('All'); }}
-          style={{
-            padding: '0.8rem 1.5rem',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'students' ? '3px solid var(--primary)' : '3px solid transparent',
-            color: activeTab === 'students' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: '1rem',
-            transition: 'var(--transition-fast)'
-          }}
-        >
-          👨‍🎓 Students <span className="badge badge-warning" style={{ marginLeft: '0.25rem' }}>{students.length}</span>
-        </button>
-      </div>
+      {/* Tabs Row (Only shown if Super Admin; for Faculty, it is purely Students) */}
+      {isSuperAdmin && (
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid var(--border-color)',
+          marginBottom: '1.5rem',
+          gap: '0.5rem'
+        }}>
+          <button 
+            onClick={() => { setActiveTab('teachers'); setSearchQuery(''); setSelectedDept('All'); setSelectedSem('All'); }}
+            style={{
+              padding: '0.8rem 1.5rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'teachers' ? '3px solid var(--primary)' : '3px solid transparent',
+              color: activeTab === 'teachers' ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontSize: '1rem',
+              transition: 'var(--transition-fast)'
+            }}
+          >
+            👩‍🏫 Teachers <span className="badge badge-info" style={{ marginLeft: '0.25rem' }}>{teachers.length}</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('students'); setSearchQuery(''); setSelectedDept('All'); setSelectedSem('All'); }}
+            style={{
+              padding: '0.8rem 1.5rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'students' ? '3px solid var(--primary)' : '3px solid transparent',
+              color: activeTab === 'students' ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontSize: '1rem',
+              transition: 'var(--transition-fast)'
+            }}
+          >
+            👨‍🎓 Students <span className="badge badge-warning" style={{ marginLeft: '0.25rem' }}>{students.length}</span>
+          </button>
+        </div>
+      )}
 
       {/* Filters Card */}
       <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -600,8 +619,8 @@ function UserManagement({ user }) {
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
           >
-            <option value="All">All Departments</option>
-            {departments.map(d => (
+            {isSuperAdmin && <option value="All">All Departments</option>}
+            {availableDepts.map(d => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
@@ -743,32 +762,34 @@ function UserManagement({ user }) {
           <div className="glass-card fade-in" style={{ padding: '2rem', width: '90%', maxWidth: '450px' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>Register New User Profile</h3>
             
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
-              <button 
-                type="button"
-                className={`btn ${createRole === 'teacher' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
-                onClick={() => setCreateRole('teacher')}
-              >
-                Teacher
-              </button>
-              <button 
-                type="button"
-                className={`btn ${createRole === 'student' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
-                onClick={() => setCreateRole('student')}
-              >
-                Student
-              </button>
-              <button 
-                type="button"
-                className={`btn ${createRole === 'admin' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
-                onClick={() => setCreateRole('admin')}
-              >
-                Admin
-              </button>
-            </div>
+            {isSuperAdmin && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                <button 
+                  type="button"
+                  className={`btn ${createRole === 'teacher' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
+                  onClick={() => setCreateRole('teacher')}
+                >
+                  Teacher
+                </button>
+                <button 
+                  type="button"
+                  className={`btn ${createRole === 'student' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
+                  onClick={() => setCreateRole('student')}
+                >
+                  Student
+                </button>
+                <button 
+                  type="button"
+                  className={`btn ${createRole === 'admin' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem' }}
+                  onClick={() => setCreateRole('admin')}
+                >
+                  Admin
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleCreateUserSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
@@ -847,7 +868,7 @@ function UserManagement({ user }) {
                     value={newDept}
                     onChange={(e) => setNewDept(e.target.value)}
                   >
-                    {departments.map(d => (
+                    {availableDepts.map(d => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>
@@ -994,7 +1015,7 @@ function UserManagement({ user }) {
                     value={editUser.department}
                     onChange={(e) => setEditUser({ ...editUser, department: e.target.value })}
                   >
-                    {departments.map(d => (
+                    {availableDepts.map(d => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>

@@ -1,20 +1,39 @@
 const express = require('express');
 const router = express.Router();
 const { admin, db } = require('../firebase');
-const { verifyToken, isAdmin } = require('../middleware/auth');
+const { verifyToken, isAdmin, isTeacherOrAdmin } = require('../middleware/auth');
 
-// Suspend or Unsuspend a user - ADMIN ONLY
+// Helper to check if caller has permission over a student target
+const canManageUser = (caller, targetUser) => {
+  if (isAdmin(caller)) return true;
+  if (!isTeacherOrAdmin(caller)) return false;
+  // Teachers can only manage students in their assigned department(s)
+  if (targetUser.role !== 'student') return false;
+  const teacherDepts = Array.isArray(caller.departments) && caller.departments.length > 0
+    ? caller.departments
+    : (caller.department ? [caller.department] : []);
+  if (teacherDepts.includes('All')) return true;
+  return teacherDepts.includes(targetUser.department);
+};
+
+// Suspend or Unsuspend a user - ADMIN or FACULTY for department students
 router.patch('/users/:uid/suspend', verifyToken, async (req, res) => {
   try {
-    if (!req.user || (req.user.role !== 'superadmin' && req.user.role !== 'admin' && !req.user.email?.toLowerCase().startsWith('admin'))) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
     const { uid } = req.params;
     const { suspended } = req.body;
 
     if (typeof suspended !== 'boolean') {
       return res.status(400).json({ error: 'Suspended field must be a boolean.' });
+    }
+
+    const targetDoc = await db.collection('users').doc(uid).get();
+    if (!targetDoc.exists) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const targetData = targetDoc.data();
+
+    if (!canManageUser(req.user, targetData)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to modify this user.' });
     }
 
     await db.collection('users').doc(uid).update({ 
@@ -35,15 +54,21 @@ router.patch('/users/:uid/suspend', verifyToken, async (req, res) => {
   }
 });
 
-// Manually verify or unverify a user's email - ADMIN ONLY
+// Manually verify or unverify a user's email - ADMIN or FACULTY for department students
 router.patch('/users/:uid/verify-email', verifyToken, async (req, res) => {
   try {
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Forbidden: Insufficient privileges. Only administrators can verify emails.' });
-    }
-
     const { uid } = req.params;
     const { emailVerified = true } = req.body;
+
+    const targetDoc = await db.collection('users').doc(uid).get();
+    if (!targetDoc.exists) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const targetData = targetDoc.data();
+
+    if (!canManageUser(req.user, targetData)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to modify this user.' });
+    }
 
     // 1. Update Firebase Auth record so client authentication passes
     try {
@@ -56,10 +81,10 @@ router.patch('/users/:uid/verify-email', verifyToken, async (req, res) => {
     await db.collection('users').doc(uid).update({
       emailVerified: Boolean(emailVerified),
       emailVerifiedAt: emailVerified ? new Date().toISOString() : null,
-      emailVerifiedBy: req.user.email || req.user.name || 'Admin'
+      emailVerifiedBy: req.user.email || req.user.name || 'Faculty'
     });
 
-    console.log(`[Admin] Set emailVerified=${emailVerified} for user ${uid}`);
+    console.log(`[Admin/Faculty] Set emailVerified=${emailVerified} for user ${uid}`);
     res.json({ success: true, uid, emailVerified: Boolean(emailVerified) });
   } catch (error) {
     console.error('Error verifying email:', error);
@@ -67,14 +92,20 @@ router.patch('/users/:uid/verify-email', verifyToken, async (req, res) => {
   }
 });
 
-// Delete a user entirely (Auth + Firestore) - ADMIN ONLY
+// Delete a user entirely (Auth + Firestore) - ADMIN or FACULTY for department students
 router.delete('/users/:uid', verifyToken, async (req, res) => {
   try {
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Forbidden: Insufficient privileges. Only administrators can delete users.' });
-    }
-
     const { uid } = req.params;
+
+    const targetDoc = await db.collection('users').doc(uid).get();
+    if (!targetDoc.exists) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const targetData = targetDoc.data();
+
+    if (!canManageUser(req.user, targetData)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
 
     // Delete from Firebase Auth (if exists)
     try {
@@ -97,18 +128,12 @@ router.delete('/users/:uid', verifyToken, async (req, res) => {
   }
 });
 
-// Update a user's profile (Firestore) - ADMIN or SELF
+// Update a user's profile (Firestore) - ADMIN, SELF, or FACULTY for department students
 router.put('/users/:uid', verifyToken, async (req, res) => {
   try {
     const { uid } = req.params;
     const isSelf = req.user.uid === uid;
     const isUserAdmin = isAdmin(req.user);
-
-    if (!isUserAdmin && !isSelf) {
-      return res.status(403).json({ error: 'Forbidden: Insufficient privileges. You cannot edit other users profiles.' });
-    }
-
-    const { name, department, departments, role, email, semester, phoneNumber, prnNumber, preferences } = req.body;
 
     const userRef = db.collection('users').doc(uid);
     const userDoc = await userRef.get();
@@ -116,6 +141,15 @@ router.put('/users/:uid', verifyToken, async (req, res) => {
     if (!userDoc.exists) {
       return res.status(404).json({ error: 'User not found in Firestore.' });
     }
+
+    const targetData = userDoc.data();
+    const canFacultyManage = canManageUser(req.user, targetData);
+
+    if (!isUserAdmin && !isSelf && !canFacultyManage) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges. You cannot edit this user profile.' });
+    }
+
+    const { name, department, departments, role, email, semester, phoneNumber, prnNumber, preferences } = req.body;
 
     const updates = {};
     if (name !== undefined) updates.name = name;
@@ -149,11 +183,14 @@ router.put('/users/:uid', verifyToken, async (req, res) => {
   }
 });
 
-// Create a new user with Firebase Auth + Firestore profile - ADMIN ONLY
+// Create a new user with Firebase Auth + Firestore profile - ADMIN or FACULTY (students only)
 router.post('/create-user', verifyToken, async (req, res) => {
   try {
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Forbidden: Insufficient privileges. Only administrators can create users.' });
+    const isCallerAdmin = isAdmin(req.user);
+    const isCallerTeacher = isTeacherOrAdmin(req.user);
+
+    if (!isCallerAdmin && !isCallerTeacher) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
     }
 
     const { name, email, password, department, departments, role, semester, phoneNumber, prnNumber } = req.body;
@@ -162,6 +199,19 @@ router.post('/create-user', verifyToken, async (req, res) => {
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    // Faculty can ONLY create student accounts in their assigned department(s)
+    if (!isCallerAdmin) {
+      if (role !== 'student') {
+        return res.status(403).json({ error: 'Forbidden: Faculty can only register student accounts.' });
+      }
+      const teacherDepts = Array.isArray(req.user.departments) && req.user.departments.length > 0
+        ? req.user.departments
+        : (req.user.department ? [req.user.department] : []);
+      if (!teacherDepts.includes('All') && !teacherDepts.includes(department)) {
+        return res.status(403).json({ error: `Forbidden: You can only register students for your department (${teacherDepts.join(', ')}).` });
+      }
     }
 
     // Create Firebase Auth account
@@ -195,7 +245,7 @@ router.post('/create-user', verifyToken, async (req, res) => {
 
     await db.collection('users').doc(uid).set(userProfile);
 
-    console.log(`[Admin] Created new ${userProfile.role} account: ${email} (uid: ${uid})`);
+    console.log(`[Admin/Faculty] Created new ${userProfile.role} account: ${email} (uid: ${uid})`);
     res.json({ success: true, uid, message: `${userProfile.role} account created successfully.` });
   } catch (error) {
     console.error('Error creating user:', error);
@@ -206,15 +256,11 @@ router.post('/create-user', verifyToken, async (req, res) => {
   }
 });
 
-// Send password reset email OR force-set a new password for a user - ADMIN or SELF
+// Send password reset email OR force-set a new password for a user - ADMIN, SELF, or FACULTY (department students)
 router.post('/users/:uid/reset-password', verifyToken, async (req, res) => {
   try {
     const isSelf = req.user.uid === req.params.uid;
     const isUserAdmin = isAdmin(req.user);
-
-    if (!isUserAdmin && !isSelf) {
-      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
-    }
 
     const { uid } = req.params;
     const { mode, newPassword } = req.body;
@@ -223,7 +269,14 @@ router.post('/users/:uid/reset-password', verifyToken, async (req, res) => {
     if (!userDoc.exists) {
       return res.status(404).json({ error: 'User not found.' });
     }
-    const { email } = userDoc.data();
+    const targetData = userDoc.data();
+    const canFacultyManage = canManageUser(req.user, targetData);
+
+    if (!isUserAdmin && !isSelf && !canFacultyManage) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
+    const { email } = targetData;
 
     if (mode === 'force') {
       if (!newPassword || newPassword.length < 6) {
