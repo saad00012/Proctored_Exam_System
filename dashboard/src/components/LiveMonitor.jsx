@@ -796,16 +796,25 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
 
                   <div className="glass-card">
                     <h3 style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Session Result</h3>
-                    <p style={{ 
-                      fontSize: '2.2rem', 
-                      fontWeight: 700, 
-                      marginTop: '0.8rem',
-                      color: selectedAttempt.status === 'malpractice_failed' ? '#ef4444' : '#10b981'
-                    }}>
-                      {selectedAttempt.status === 'malpractice_failed' ? 'MALPRACTICE FAIL' : 'PASSED'}
-                    </p>
+                    {(() => {
+                      const isMalpractice = selectedAttempt.status === 'malpractice_failed';
+                      const isPassed = !isMalpractice && Number(scorePercent) >= 40;
+                      const resultLabel = isMalpractice ? 'MALPRACTICE FAIL' : (isPassed ? 'PASSED' : 'FAILED');
+                      const resultColor = (isMalpractice || !isPassed) ? '#ef4444' : '#10b981';
+
+                      return (
+                        <p style={{ 
+                          fontSize: '2.2rem', 
+                          fontWeight: 700, 
+                          marginTop: '0.8rem',
+                          color: resultColor
+                        }}>
+                          {resultLabel}
+                        </p>
+                      );
+                    })()}
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                      Final grading decision
+                      Final grading decision (Pass mark: 40%)
                     </p>
                   </div>
                 </div>
