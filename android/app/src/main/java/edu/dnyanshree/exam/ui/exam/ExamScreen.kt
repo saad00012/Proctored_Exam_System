@@ -194,8 +194,9 @@ fun ExamScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf("") }
     var showScoreScreen by remember { mutableStateOf(false) }
-    var serverScore by remember { mutableIntStateOf(0) }
-    var serverTotal by remember { mutableIntStateOf(0) }
+    var serverScore by remember { mutableDoubleStateOf(0.0) }
+    var serverTotal by remember { mutableDoubleStateOf(0.0) }
+    var serverPassingPercentage by remember { mutableDoubleStateOf(40.0) }
     
 
 
@@ -445,8 +446,9 @@ fun ExamScreen(
                 }.toString()
 
                 val response = makeApiRequest("/auto-submit", "POST", requestBody, token)
-                serverScore = response.optInt("score", 0)
-                serverTotal = response.optInt("total", 0)
+                serverScore = response.optDouble("score", 0.0)
+                serverTotal = response.optDouble("totalMarks", response.optDouble("total", 0.0))
+                serverPassingPercentage = response.optDouble("passingPercentage", 40.0)
                 offlineAnswerManager.clearPaperData(activePaperId)
                 showScoreScreen = true
             } catch (_: Exception) {
@@ -569,7 +571,8 @@ fun ExamScreen(
                         val origIdx = optObj.optInt("originalIndex", j)
                         parsedOptions.add(Option(optText, optImg, origIdx))
                     }
-                    qList.add(Question(id, text, imgUrl, parsedOptions, correctIndex, subject))
+                    val marks = qObj.optDouble("marks", 1.0)
+                    qList.add(Question(id, text, imgUrl, parsedOptions, correctIndex, subject, marks))
                 }
             }
 
@@ -712,9 +715,23 @@ fun ExamScreen(
 
     // 1. Instant Score Display Screen after submission
     if (showScoreScreen) {
-        val totalQuestions = if (serverTotal > 0) serverTotal else questions.size
-        val score = if (serverTotal > 0) serverScore else questions.count { q -> selectedAnswers[q.id] == q.correctOptionIndex }
-        val percentage = if (totalQuestions > 0) (score * 100) / totalQuestions else 0
+        val totalMarksVal: Double = if (serverTotal > 0.0) {
+            serverTotal
+        } else {
+            val sum = questions.sumOf { it.marks }
+            if (sum > 0.0) sum else questions.size.toDouble()
+        }
+        val scoreVal: Double = if (serverTotal > 0.0) {
+            serverScore
+        } else {
+            questions.filter { q -> selectedAnswers[q.id] == q.correctOptionIndex }.sumOf { it.marks }
+        }
+        val percentage = if (totalMarksVal > 0.0) (scoreVal / totalMarksVal) * 100.0 else 0.0
+        val isPassed = percentage >= serverPassingPercentage
+
+        fun formatNum(n: Double): String {
+            return if (n % 1.0 == 0.0) n.toInt().toString() else String.format(Locale.US, "%.1f", n)
+        }
         
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Card(
@@ -744,21 +761,21 @@ fun ExamScreen(
                         modifier = Modifier.size(120.dp)
                     ) {
                         CircularProgressIndicator(
-                            progress = { percentage / 100f },
+                            progress = { (percentage / 100.0).toFloat().coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxSize(),
-                            color = if (percentage >= 50) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            color = if (isPassed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                             strokeWidth = 10.dp,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "$percentage%",
-                                fontSize = 24.sp,
+                                text = "${String.format(Locale.US, "%.1f", percentage)}%",
+                                fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "accuracy",
+                                text = "score",
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -772,16 +789,16 @@ fun ExamScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Score", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$score / $totalQuestions", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Marks", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${formatNum(scoreVal)} / ${formatNum(totalMarksVal)}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Result", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Result (Pass: ${formatNum(serverPassingPercentage)}%)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                text = if (percentage >= 40) "PASSED" else "FAILED",
+                                text = if (isPassed) "PASSED" else "FAILED",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (percentage >= 40) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                color = if (isPassed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -1172,12 +1189,32 @@ fun ExamScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Question ${currentQuestionIdx + 1} of ${questions.size}",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Question ${currentQuestionIdx + 1} of ${questions.size}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.padding(start = 2.dp)
+                                ) {
+                                    val qMarks = currentQuestion.marks
+                                    val marksLabel = if (qMarks % 1.0 == 0.0) "${qMarks.toInt()} Marks" else "$qMarks Marks"
+                                    Text(
+                                        text = marksLabel,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = "$answeredCount / ${questions.size} Answered",
                                 fontSize = 12.sp,

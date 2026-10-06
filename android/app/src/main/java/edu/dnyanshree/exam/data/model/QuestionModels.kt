@@ -6,7 +6,8 @@ data class Question(
     val questionImageUrl: String? = null,
     val options: List<Option>,
     val correctOptionIndex: Int,
-    val subject: String
+    val subject: String,
+    val marks: Double = 1.0
 )
 
 data class Option(
@@ -29,8 +30,9 @@ data class ExamPaperItem(
 )
 
 data class ScoreSummary(
-    val score: Int,
-    val total: Int,
-    val percentage: Int,
-    val elapsedSeconds: Int
+    val score: Double,
+    val total: Double,
+    val percentage: Double,
+    val elapsedSeconds: Int,
+    val passingPercentage: Double = 40.0
 )

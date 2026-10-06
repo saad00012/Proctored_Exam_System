@@ -354,6 +354,7 @@ const parseScheduleDate = (dateStr) => {
     const publicQuestions = shuffledQuestions.map((q, qIdx) => {
       const qCopy = { ...q };
       delete qCopy.correctOptionIndex;
+      qCopy.marks = Number(q.marks) > 0 ? Number(q.marks) : 1;
 
       if (Array.isArray(q.options) && q.options.length > 0) {
         const optionsWithOrig = q.options.map((opt, origIdx) => ({
@@ -366,15 +367,19 @@ const parseScheduleDate = (dateStr) => {
       return qCopy;
     });
 
+    const paperPassingPercentage = Number(paperObj.passingPercentage) > 0 ? Number(paperObj.passingPercentage) : 40;
+
     res.json({
       message: 'Exam session started',
       sessionId: attemptId,
       paperId,
       remainingTimeSeconds: calculatedTimeLeft,
       warningsCount: subjectWarningsCount,
+      passingPercentage: paperPassingPercentage,
       paper: {
         title: paperTitle,
-        department: paperDepartment
+        department: paperDepartment,
+        passingPercentage: paperPassingPercentage
       },
       questions: publicQuestions
     });
@@ -645,6 +650,15 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
     }
     const attempt = attemptDoc.data();
 
+    // Fetch paper document for passing percentage
+    let passingPercentage = 40;
+    try {
+      const pDoc = await db.collection('papers').doc(paperId).get();
+      if (pDoc.exists && Number(pDoc.data().passingPercentage) > 0) {
+        passingPercentage = Number(pDoc.data().passingPercentage);
+      }
+    } catch (_) {}
+
     if (attempt.status === 'submitted') {
       let questionsList = [];
       const qSnap = await db.collection('questions').where('paperId', '==', paperId).get();
@@ -653,18 +667,27 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
       });
 
       let score = 0;
+      let totalMarks = 0;
       const studentAnswers = attempt.answers || {};
       questionsList.forEach(q => {
+        const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+        totalMarks += qMarks;
         const ans = studentAnswers[q.id];
         if (ans !== undefined && ans === q.correctOptionIndex) {
-          score++;
+          score += qMarks;
         }
       });
+      score = Math.round((score + Number.EPSILON) * 100) / 100;
+      totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
+
       return res.json({
         message: 'Exam already submitted',
         sessionId: attemptId,
         score,
-        total: questionsList.length
+        totalMarks,
+        total: totalMarks,
+        totalQuestions: questionsList.length,
+        passingPercentage
       });
     }
 
@@ -685,13 +708,18 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
     });
 
     let score = 0;
+    let totalMarks = 0;
     const studentAnswers = attempt.answers || {};
     questionsList.forEach(q => {
+      const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+      totalMarks += qMarks;
       const ans = studentAnswers[q.id];
       if (ans !== undefined && ans === q.correctOptionIndex) {
-        score++;
+        score += qMarks;
       }
     });
+    score = Math.round((score + Number.EPSILON) * 100) / 100;
+    totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
     const total = questionsList.length;
 
     await db.collection('exam_attempts').doc(attemptId).update({
@@ -700,14 +728,19 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
       overrideTimeSeconds: 0,
       submittedAt: new Date().toISOString(),
       score,
-      totalQuestions: total
+      totalMarks,
+      totalQuestions: total,
+      passingPercentage
     });
 
     res.json({
       message: 'Exam submitted successfully',
       sessionId: attemptId,
       score,
-      total
+      totalMarks,
+      total: totalMarks,
+      totalQuestions: total,
+      passingPercentage
     });
   } catch (error) {
     console.error('Error in /auto-submit:', error);
@@ -748,14 +781,17 @@ router.get('/student/results', verifyToken, async (req, res) => {
         subject = paperData.subject || paperData.title;
         if (paperData.department) department = paperData.department;
         if (paperData.semester) semester = paperData.semester;
+        if (Number(paperData.passingPercentage) > 0) passingPercentage = Number(paperData.passingPercentage);
       }
       
       let score = 0;
+      let totalMarks = 0;
       let totalQuestions = 0;
       
-      if (attempt.score !== undefined && attempt.totalQuestions !== undefined) {
+      if (attempt.score !== undefined && attempt.totalMarks !== undefined) {
         score = attempt.score;
-        totalQuestions = attempt.totalQuestions;
+        totalMarks = attempt.totalMarks;
+        totalQuestions = attempt.totalQuestions || 0;
       } else {
         // Recalculate if not persisted
         const qSnap = await db.collection('questions').where('paperId', '==', attempt.paperId).get();
@@ -764,16 +800,22 @@ router.get('/student/results', verifyToken, async (req, res) => {
         const studentAnswers = attempt.answers || {};
         qSnap.forEach(qDoc => {
           const qData = qDoc.data();
+          const qMarks = Number(qData.marks) > 0 ? Number(qData.marks) : 1;
+          totalMarks += qMarks;
           const ans = studentAnswers[qDoc.id];
           if (ans !== undefined && ans === qData.correctOptionIndex) {
-            score++;
+            score += qMarks;
           }
         });
+        score = Math.round((score + Number.EPSILON) * 100) / 100;
+        totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
       }
       
       let percentage = 0;
-      if (totalQuestions > 0) {
-        percentage = Math.round((score / totalQuestions) * 100);
+      if (totalMarks > 0) {
+        percentage = Math.round(((score / totalMarks) * 100 + Number.EPSILON) * 100) / 100;
+      } else if (totalQuestions > 0) {
+        percentage = Math.round(((score / totalQuestions) * 100 + Number.EPSILON) * 100) / 100;
       }
       
       results.push({
@@ -783,8 +825,10 @@ router.get('/student/results', verifyToken, async (req, res) => {
         department,
         semester,
         score,
+        totalMarks,
         totalQuestions,
         percentage,
+        passingPercentage,
         submittedAt: attempt.submittedAt,
         elapsedTime: attempt.elapsedTime,
         warnings: attempt.warnings || 0

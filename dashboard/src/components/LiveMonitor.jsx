@@ -325,14 +325,17 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
   // Compute grade details for a specific attempt
   const computeGradeDetails = (attempt) => {
     const paperQs = questions.filter(q => q.paperId === attempt.paperId);
-    if (paperQs.length === 0) return { score: 0, total: 0, details: [] };
+    if (paperQs.length === 0) return { score: 0, total: 0, totalQuestions: 0, details: [] };
 
     let score = 0;
+    let totalMarks = 0;
     const answers = attempt.answers || {};
     const details = paperQs.map(q => {
+      const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+      totalMarks += qMarks;
       const studentAns = answers[q.id];
       const isCorrect = studentAns !== undefined && studentAns === q.correctOptionIndex;
-      if (isCorrect) score++;
+      if (isCorrect) score += qMarks;
 
       return {
         questionId: q.id,
@@ -341,13 +344,17 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         options: q.options,
         studentAnswerIdx: studentAns,
         correctAnswerIdx: q.correctOptionIndex,
+        marks: qMarks,
         isCorrect
       };
     });
 
+    const round2 = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+
     return {
-      score,
-      total: paperQs.length,
+      score: round2(score),
+      total: round2(totalMarks),
+      totalQuestions: paperQs.length,
       details
     };
   };
@@ -759,10 +766,12 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
           {/* Grading Stats Summary */}
           {(() => {
             const stats = computeGradeDetails(selectedAttempt);
-            const scorePercent = stats.total > 0 ? ((stats.score / stats.total) * 100).toFixed(0) : 0;
+            const scorePercent = stats.total > 0 ? ((stats.score / stats.total) * 100).toFixed(1) : 0;
             const activeDepartment = getPaperDepartment(selectedAttempt.paperId);
             const allStudentAttempts = attempts.filter(a => a.studentId === selectedAttempt.studentId && getPaperDepartment(a.paperId) === activeDepartment);
             const totalWarnings = allStudentAttempts.reduce((sum, a) => sum + (a.warnings || 0), 0);
+            const paperObj = papers.find(p => p.id === selectedAttempt.paperId);
+            const passPercentage = Number(paperObj?.passingPercentage) > 0 ? Number(paperObj.passingPercentage) : 40;
             
             return (
               <div>
@@ -773,7 +782,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                       {stats.score} / {stats.total}
                     </p>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                      Accuracy: {scorePercent}%
+                      Score: {scorePercent}% ({stats.totalQuestions} Questions)
                     </p>
                   </div>
 
@@ -798,7 +807,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                     <h3 style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Session Result</h3>
                     {(() => {
                       const isMalpractice = selectedAttempt.status === 'malpractice_failed';
-                      const isPassed = !isMalpractice && Number(scorePercent) >= 40;
+                      const isPassed = !isMalpractice && Number(scorePercent) >= passPercentage;
                       const resultLabel = isMalpractice ? 'MALPRACTICE FAIL' : (isPassed ? 'PASSED' : 'FAILED');
                       const resultColor = (isMalpractice || !isPassed) ? '#ef4444' : '#10b981';
 
@@ -814,7 +823,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                       );
                     })()}
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                      Final grading decision (Pass mark: 40%)
+                      Final grading decision (Pass mark: {passPercentage}%)
                     </p>
                   </div>
                 </div>
@@ -834,9 +843,9 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                       }}
                     >
                       <div className="flex-between" style={{ marginBottom: '1rem' }}>
-                        <span className="badge badge-info">Question {idx + 1}</span>
+                        <span className="badge badge-info">Question {idx + 1} ({item.marks} {item.marks === 1 ? 'Mark' : 'Marks'})</span>
                         <span className={`badge ${item.isCorrect ? 'badge-success' : 'badge-danger'}`}>
-                          {item.isCorrect ? 'Correct (+1 Mark)' : 'Incorrect'}
+                          {item.isCorrect ? `Correct (+${item.marks} Marks)` : 'Incorrect (0 Marks)'}
                         </span>
                       </div>
 

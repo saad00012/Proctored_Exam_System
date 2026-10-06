@@ -175,6 +175,11 @@ function PaperUpload({ user }) {
     { text: '', file: null, preview: null, compStat: '' }
   ]);
   const [correctOption, setCorrectOption] = useState(0);
+  const [examPassingPercentage, setExamPassingPercentage] = useState('40');
+  const [paperPassingPercentage, setPaperPassingPercentage] = useState('40');
+  const [editPaperPassingPercentage, setEditPaperPassingPercentage] = useState('40');
+  const [editExamPassingPercentage, setEditExamPassingPercentage] = useState('40');
+  const [questionMarks, setQuestionMarks] = useState('1');
 
   const moveQuestionUp = async (idx) => {
     if (idx === 0) return;
@@ -262,6 +267,7 @@ function PaperUpload({ user }) {
       setEditPaperDuration(selectedPaper.durationMinutes || '');
       setEditPaperScheduleStart(selectedPaper.scheduleStart || '');
       setEditPaperScheduleEnd(selectedPaper.scheduleEnd || '');
+      setEditPaperPassingPercentage(selectedPaper.passingPercentage ? String(selectedPaper.passingPercentage) : '40');
     } else {
       setShowEditPaperInfo(false);
     }
@@ -737,7 +743,7 @@ function PaperUpload({ user }) {
         r.getCell(2).alignment = { vertical: 'middle' };
       };
 
-      // Rows 3–10 matching the upload parser: B3=examName, B4=subject, B5=dept, B6=sem, B7=duration, B8=start, B9=end, B10=totalQ
+      // Rows 3–11 matching the upload parser: B3=examName, B4=subject, B5=dept, B6=sem, B7=duration, B8=start, B9=end, B10=totalQ, B11=passPct
       const totalQPerSet = Math.max(...examPapers.map(p => (questionsByPaper[p.id] || []).length), 0);
       addInfoRow('Exam Name *', exam.name || '');
       addInfoRow('Subject / Course *', exam.subject || '');
@@ -747,6 +753,7 @@ function PaperUpload({ user }) {
       addInfoRow('Schedule Start (YYYY-MM-DD HH:MM) *', exam.scheduleStart || '');
       addInfoRow('Schedule End   (YYYY-MM-DD HH:MM) *', exam.scheduleEnd || '');
       addInfoRow('Total Questions Per Set *', totalQPerSet || '');
+      addInfoRow('Passing Percentage % (e.g. 40)', exam.passingPercentage || 40);
 
       // ── Set A / B / C / D sheets ────────────────────────────────────────────
       const SET_NAMES = ['Set A', 'Set B', 'Set C', 'Set D'];
@@ -756,10 +763,10 @@ function PaperUpload({ user }) {
       SET_NAMES.forEach(setName => {
         const sheet = wb.addWorksheet(setName);
         sheet.columns = [
-          { width: 5 }, { width: 70 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 17 }
+          { width: 5 }, { width: 70 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 17 }, { width: 12 }
         ];
 
-        const hdr = sheet.addRow(['No.', 'Question Text *', 'Option A *', 'Option B *', 'Option C *', 'Option D *', 'Correct (1-4) *']);
+        const hdr = sheet.addRow(['No.', 'Question Text *', 'Option A *', 'Option B *', 'Option C *', 'Option D *', 'Correct (1-4) *', 'Marks']);
         hdr.height = 32;
         hdr.eachCell(cell => {
           cell.fill = HDR_FILL;
@@ -784,14 +791,15 @@ function PaperUpload({ user }) {
           const optC = q?.options?.[2]?.text || '';
           const optD = q?.options?.[3]?.text || '';
           const correct = q != null ? (q.correctOptionIndex + 1) : '';
+          const marks = q != null ? (Number(q.marks) > 0 ? Number(q.marks) : 1) : '';
 
-          const row = sheet.addRow([i + 1, q?.questionText || '', optA, optB, optC, optD, correct]);
+          const row = sheet.addRow([i + 1, q?.questionText || '', optA, optB, optC, optD, correct, marks]);
           row.height = 20;
           row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
           row.getCell(1).font = { color: { argb: 'FF888888' } };
           row.getCell(2).alignment = { wrapText: true, vertical: 'middle' };
           if ((i + 1) % 2 === 0) {
-            [2, 3, 4, 5, 6, 7].forEach(col => { row.getCell(col).fill = ALT_FILL; });
+            [2, 3, 4, 5, 6, 7, 8].forEach(col => { row.getCell(col).fill = ALT_FILL; });
           }
           row.getCell(7).dataValidation = {
             type: 'list', allowBlank: true, formulae: ['"1,2,3,4"'],
@@ -799,6 +807,7 @@ function PaperUpload({ user }) {
             errorTitle: 'Invalid Answer', error: '1=Option A, 2=Option B, 3=Option C, 4=Option D.'
           };
           row.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
+          row.getCell(8).alignment = { horizontal: 'center', vertical: 'middle' };
         }
       });
 
@@ -843,15 +852,26 @@ function PaperUpload({ user }) {
 
     setLoading(true);
     try {
+      const passPct = Number(editPaperPassingPercentage) > 0 ? Number(editPaperPassingPercentage) : 40;
       await updateDoc(doc(db, 'papers', selectedPaper.id), {
         title: editPaperTitle,
         subject: editPaperSubject,
         department: editPaperDepartment,
+        passingPercentage: passPct,
         ...(editPaperDuration ? { durationMinutes: parseInt(editPaperDuration) } : { durationMinutes: null }),
         ...(editPaperScheduleStart ? { scheduleStart: editPaperScheduleStart } : { scheduleStart: null }),
         ...(editPaperScheduleEnd ? { scheduleEnd: editPaperScheduleEnd } : { scheduleEnd: null })
       });
-      setSelectedPaper({ ...selectedPaper, title: editPaperTitle, subject: editPaperSubject, department: editPaperDepartment, durationMinutes: editPaperDuration ? parseInt(editPaperDuration) : null, scheduleStart: editPaperScheduleStart || null, scheduleEnd: editPaperScheduleEnd || null });
+      setSelectedPaper({ 
+        ...selectedPaper, 
+        title: editPaperTitle, 
+        subject: editPaperSubject, 
+        department: editPaperDepartment, 
+        passingPercentage: passPct,
+        durationMinutes: editPaperDuration ? parseInt(editPaperDuration) : null, 
+        scheduleStart: editPaperScheduleStart || null, 
+        scheduleEnd: editPaperScheduleEnd || null 
+      });
       setShowEditPaperInfo(false);
     } catch (err) {
       console.error("Failed to update paper info:", err);
@@ -871,6 +891,7 @@ function PaperUpload({ user }) {
         questionImageUrl: bankQuestion.questionImageUrl || null,
         options: bankQuestion.options,
         correctOptionIndex: bankQuestion.correctOptionIndex,
+        marks: Number(bankQuestion.marks) > 0 ? Number(bankQuestion.marks) : 1,
         department: selectedPaper.department || bankQuestion.department,
         subject: selectedPaper.subject || bankQuestion.subject || '',
         order: questions.length,
@@ -893,6 +914,7 @@ function PaperUpload({ user }) {
         questionImageUrl: question.questionImageUrl || null,
         options: question.options,
         correctOptionIndex: question.correctOptionIndex,
+        marks: Number(question.marks) > 0 ? Number(question.marks) : 1,
         subject: selectedPaper?.subject || '',
         department: selectedPaper?.department || '',
         tags: [],
@@ -914,11 +936,13 @@ function PaperUpload({ user }) {
     if (!examName || !examSubject || !examDepartment) return;
     setLoading(true);
     try {
+      const passPct = Number(examPassingPercentage) > 0 ? Number(examPassingPercentage) : 40;
       await addDoc(collection(db, 'exams'), {
         name: examName,
         subject: examSubject,
         department: examDepartment,
         semester: examSemester,
+        passingPercentage: passPct,
         ...(examDuration && { durationMinutes: parseInt(examDuration) }),
         ...(examScheduleStart && { scheduleStart: examScheduleStart }),
         ...(examScheduleEnd && { scheduleEnd: examScheduleEnd }),
@@ -931,7 +955,7 @@ function PaperUpload({ user }) {
         createdByEmail: user?.email || null
       });
       setExamName(''); setExamSubject(''); setExamDepartment(user?.department || 'Computer Science & Engineering'); setExamSemester('Semester 7');
-      setExamDuration(''); setExamScheduleStart(''); setExamScheduleEnd('');
+      setExamDuration(''); setExamScheduleStart(''); setExamScheduleEnd(''); setExamPassingPercentage('40');
       setShowCreateExam(false);
     } catch (err) {
       alert('Failed to create exam: ' + err.message);
@@ -957,6 +981,7 @@ function PaperUpload({ user }) {
         subject: exam.subject,
         department: exam.department,
         semester: exam.semester || 'Semester 7',
+        passingPercentage: Number(exam.passingPercentage) > 0 ? Number(exam.passingPercentage) : 40,
         ...(exam.durationMinutes && { durationMinutes: exam.durationMinutes }),
         ...(exam.scheduleStart && { scheduleStart: exam.scheduleStart }),
         ...(exam.scheduleEnd && { scheduleEnd: exam.scheduleEnd }),
@@ -987,11 +1012,13 @@ function PaperUpload({ user }) {
     }
     setLoading(true);
     try {
+      const passPct = Number(editExamPassingPercentage) > 0 ? Number(editExamPassingPercentage) : 40;
       const updatedExamData = {
         name: editExamName,
         subject: editExamSubject,
         department: editExamDepartment,
         semester: editExamSemester,
+        passingPercentage: passPct,
         ...(editExamDuration ? { durationMinutes: parseInt(editExamDuration) } : { durationMinutes: null }),
         ...(editExamScheduleStart ? { scheduleStart: editExamScheduleStart } : { scheduleStart: null }),
         ...(editExamScheduleEnd ? { scheduleEnd: editExamScheduleEnd } : { scheduleEnd: null })
@@ -1005,6 +1032,7 @@ function PaperUpload({ user }) {
           subject: editExamSubject,
           department: editExamDepartment,
           semester: editExamSemester,
+          passingPercentage: passPct,
           ...(editExamDuration ? { durationMinutes: parseInt(editExamDuration) } : { durationMinutes: null }),
           ...(editExamScheduleStart ? { scheduleStart: editExamScheduleStart } : { scheduleStart: null }),
           ...(editExamScheduleEnd ? { scheduleEnd: editExamScheduleEnd } : { scheduleEnd: null })
@@ -1106,12 +1134,15 @@ function PaperUpload({ user }) {
         imageUrl: opt.file || null
       }));
 
+      const marksNum = Number(questionMarks) > 0 ? Number(questionMarks) : 1;
+
       const questionData = {
         paperId: selectedPaper.id,
         questionText,
         questionImageUrl,
         options: optionsData,
         correctOptionIndex: correctOption,
+        marks: marksNum,
         department: selectedPaper.department,
         order: questions.length
       };
@@ -1120,6 +1151,7 @@ function PaperUpload({ user }) {
 
       // Reset fields
       setQuestionText('');
+      setQuestionMarks('1');
       setQuestionFile(null);
       setQuestionPreview(null);
       setQuestionCompStat('');
@@ -1247,6 +1279,10 @@ function PaperUpload({ user }) {
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '140px' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Pass % (Threshold)</label>
+                    <input type="number" className="input-field" placeholder="e.g. 40" value={examPassingPercentage} onChange={e => setExamPassingPercentage(e.target.value)} min="1" max="100" disabled={loading} />
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '140px' }}>
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Duration (mins)</label>
                     <input type="number" className="input-field" placeholder="e.g. 45" value={examDuration} onChange={e => setExamDuration(e.target.value)} min="1" disabled={loading} />
@@ -1418,6 +1454,7 @@ function PaperUpload({ user }) {
                             setEditExamDuration(exam.durationMinutes || '');
                             setEditExamScheduleStart(exam.scheduleStart || '');
                             setEditExamScheduleEnd(exam.scheduleEnd || '');
+                            setEditExamPassingPercentage(exam.passingPercentage ? String(exam.passingPercentage) : '40');
                             setExpandedExams(prev => ({ ...prev, [exam.id]: true }));
                           }
                         },
@@ -1496,6 +1533,10 @@ function PaperUpload({ user }) {
                         </select>
                       </div>
                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '110px' }}>
+                          <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Pass %</label>
+                          <input type="number" className="input-field" placeholder="40" value={editExamPassingPercentage} onChange={e => setEditExamPassingPercentage(e.target.value)} min="1" max="100" disabled={loading} />
+                        </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '130px' }}>
                           <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Duration (mins)</label>
                           <input type="number" className="input-field" placeholder="45" value={editExamDuration} onChange={e => setEditExamDuration(e.target.value)} min="1" disabled={loading} />
@@ -1761,6 +1802,18 @@ function PaperUpload({ user }) {
                 </select>
               </div>
               <div style={{ flex: 1, minWidth: '120px' }}>
+                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>Pass %</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  placeholder="40"
+                  value={editPaperPassingPercentage}
+                  onChange={(e) => setEditPaperPassingPercentage(e.target.value)}
+                  min="1"
+                  max="100"
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: '120px' }}>
                 <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>Duration (mins)</label>
                 <input
                   type="number"
@@ -1803,7 +1856,7 @@ function PaperUpload({ user }) {
               <div>
                 <h2 className="gradient-text" style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{selectedPaper.title}</h2>
                 <p style={{ color: 'var(--text-secondary)' }}>
-                  Subject: <strong style={{ color: 'white' }}>{selectedPaper.subject || 'None'}</strong> | Department: <strong style={{ color: 'white' }}>{selectedPaper.department}</strong> | Total Questions: <strong style={{ color: 'white' }}>{questions.length}</strong>
+                  Subject: <strong style={{ color: 'white' }}>{selectedPaper.subject || 'None'}</strong> | Department: <strong style={{ color: 'white' }}>{selectedPaper.department}</strong> | Questions: <strong style={{ color: 'white' }}>{questions.length}</strong> | Total Marks: <strong style={{ color: 'var(--primary)' }}>{questions.reduce((sum, q) => sum + (Number(q.marks) > 0 ? Number(q.marks) : 1), 0)}</strong> | Pass Mark: <strong style={{ color: '#10b981' }}>{selectedPaper.passingPercentage || 40}%</strong>
                   {selectedPaper.durationMinutes && <> | Duration: <strong style={{ color: 'white' }}>{selectedPaper.durationMinutes} mins</strong></>}
                 </p>
                 {(selectedPaper.scheduleStart || selectedPaper.scheduleEnd) && (
@@ -1859,6 +1912,9 @@ function PaperUpload({ user }) {
                         >
                           ▼
                         </button>
+                        <span className="badge badge-info" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                          +{Number(q.marks) > 0 ? Number(q.marks) : 1} {Number(q.marks) === 1 ? 'Mark' : 'Marks'}
+                        </span>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           Correct: Option {String.fromCharCode(65 + q.correctOptionIndex)}
                         </span>
@@ -2027,24 +2083,42 @@ function PaperUpload({ user }) {
                     </div>
                   </div>
 
-                  {/* Correct answer toggle */}
-                  <div>
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-                      Identify Correct Option
-                    </label>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                      {[0, 1, 2, 3].map((num) => (
-                        <label key={num} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
-                          <input
-                            type="radio"
-                            name="correctOption"
-                            checked={correctOption === num}
-                            onChange={() => setCorrectOption(num)}
-                            disabled={loading}
-                          />
-                          <span>Option {String.fromCharCode(65 + num)}</span>
-                        </label>
-                      ))}
+                  {/* Marks & Correct answer selector row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem', alignItems: 'center' }}>
+                    <div>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+                        Marks / Points
+                      </label>
+                      <input
+                        type="number"
+                        className="input-field"
+                        placeholder="1"
+                        value={questionMarks}
+                        onChange={(e) => setQuestionMarks(e.target.value)}
+                        min="0.5"
+                        step="0.5"
+                        required
+                        disabled={loading}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+                        Correct Option
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        {[0, 1, 2, 3].map((num) => (
+                          <label key={num} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                            <input
+                              type="radio"
+                              name="correctOption"
+                              checked={correctOption === num}
+                              onChange={() => setCorrectOption(num)}
+                              disabled={loading}
+                            />
+                            <span>Option {String.fromCharCode(65 + num)}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
 

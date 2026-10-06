@@ -27,8 +27,10 @@ data class ResultItem(
     val subject: String,
     val department: String,
     val semester: String,
-    val score: Long?,
+    val score: Double?,
+    val totalMarks: Double?,
     val totalQuestions: Long?,
+    val passingPercentage: Double,
     val submittedAt: String,
     val warnings: Long,
     val elapsedTime: Long
@@ -59,8 +61,10 @@ fun ResultHistoryScreen(onBack: () -> Unit) {
             val fetchedResults = mutableListOf<ResultItem>()
             for (doc in attemptsSnapshot.documents) {
                 val paperId = doc.getString("paperId") ?: continue
-                val score = doc.getLong("score")
+                val score = doc.getDouble("score") ?: doc.getLong("score")?.toDouble()
+                val totalMarks = doc.getDouble("totalMarks") ?: doc.getLong("totalMarks")?.toDouble()
                 val totalQuestions = doc.getLong("totalQuestions")
+                val attemptPassPct = doc.getDouble("passingPercentage") ?: doc.getLong("passingPercentage")?.toDouble()
                 val submittedAt = doc.getString("submittedAt") ?: ""
                 val warnings = doc.getLong("warnings") ?: 0L
                 val elapsedTime = doc.getLong("elapsedTime") ?: 0L
@@ -74,6 +78,8 @@ fun ResultHistoryScreen(onBack: () -> Unit) {
                     val subject = paperDoc.getString("subject") ?: "Unknown Subject"
                     val department = paperDoc.getString("department") ?: ""
                     val semester = paperDoc.getString("semester") ?: ""
+                    val paperPassPct = paperDoc.getDouble("passingPercentage") ?: paperDoc.getLong("passingPercentage")?.toDouble() ?: 40.0
+                    val finalPassPct = attemptPassPct ?: paperPassPct
 
                     fetchedResults.add(
                         ResultItem(
@@ -83,7 +89,9 @@ fun ResultHistoryScreen(onBack: () -> Unit) {
                             department = department,
                             semester = semester,
                             score = score,
+                            totalMarks = totalMarks ?: totalQuestions?.toDouble(),
                             totalQuestions = totalQuestions,
+                            passingPercentage = finalPassPct,
                             submittedAt = submittedAt,
                             warnings = warnings,
                             elapsedTime = elapsedTime
@@ -176,10 +184,15 @@ private fun ResultCard(result: ResultItem) {
             }
             Spacer(modifier = Modifier.height(8.dp))
             
-            val percentage = if (result.score != null && result.totalQuestions != null && result.totalQuestions > 0) {
-                (result.score.toFloat() / result.totalQuestions.toFloat()) * 100f
+            val totalPossible = result.totalMarks ?: result.totalQuestions?.toDouble()
+            val percentage = if (result.score != null && totalPossible != null && totalPossible > 0.0) {
+                (result.score / totalPossible) * 100.0
             } else {
                 null
+            }
+
+            fun formatNum(n: Double): String {
+                return if (n % 1.0 == 0.0) n.toInt().toString() else String.format(Locale.US, "%.1f", n)
             }
 
             Row(
@@ -189,7 +202,7 @@ private fun ResultCard(result: ResultItem) {
             ) {
                 if (result.score != null) {
                     Text(
-                        text = "Score: ${result.score}${if (result.totalQuestions != null) "/${result.totalQuestions}" else ""}",
+                        text = "Score: ${formatNum(result.score)}${if (totalPossible != null) " / ${formatNum(totalPossible)}" else ""} Marks",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     )
@@ -202,7 +215,7 @@ private fun ResultCard(result: ResultItem) {
                 }
 
                 if (percentage != null) {
-                    val isPass = percentage >= 40f
+                    val isPass = percentage >= result.passingPercentage
                     val badgeColor = if (isPass) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
                     val badgeTextColor = if (isPass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                     
@@ -224,12 +237,19 @@ private fun ResultCard(result: ResultItem) {
 
             if (percentage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                val progressColor = if (percentage >= 40f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                val isPass = percentage >= result.passingPercentage
+                val progressColor = if (isPass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                 LinearProgressIndicator(
-                    progress = { percentage / 100f },
+                    progress = { (percentage / 100.0).toFloat().coerceIn(0f, 1f) },
                     color = progressColor,
                     trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
                     modifier = Modifier.fillMaxWidth().height(6.dp),
+                )
+                Text(
+                    text = "${String.format(Locale.US, "%.1f", percentage)}% (Passing: ${formatNum(result.passingPercentage)}%)",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 

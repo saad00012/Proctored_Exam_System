@@ -61,6 +61,7 @@ function ExamImport({ user, onClose, onImported }) {
       addInfoRow('Schedule Start (YYYY-MM-DD HH:MM) *');
       addInfoRow('Schedule End   (YYYY-MM-DD HH:MM) *');
       addInfoRow('Total Questions Per Set *');
+      addInfoRow('Passing Percentage % (e.g. 40)');
 
       const deptValidationFormula = '"' + (departments.length > 0 ? departments.join(',') : 'Computer Science & Engineering') + '"';
       info.getCell('B5').dataValidation = {
@@ -85,6 +86,11 @@ function ExamImport({ user, onClose, onImported }) {
         showErrorMessage: true, errorStyle: 'stop',
         errorTitle: 'Invalid Count', error: 'Must be between 1 and 200.'
       };
+      info.getCell('B11').dataValidation = {
+        type: 'whole', operator: 'between', formulae: [1, 100],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Pass %', error: 'Passing percentage must be between 1 and 100.'
+      };
 
       const HDR_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
       const HDR_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -93,9 +99,9 @@ function ExamImport({ user, onClose, onImported }) {
       SET_NAMES.forEach(setName => {
         const sheet = wb.addWorksheet(setName);
         sheet.columns = [
-          { width: 5 }, { width: 70 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 17 }
+          { width: 5 }, { width: 70 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 28 }, { width: 17 }, { width: 12 }
         ];
-        const hdr = sheet.addRow(['No.', 'Question Text *', 'Option A *', 'Option B *', 'Option C *', 'Option D *', 'Correct (1-4) *']);
+        const hdr = sheet.addRow(['No.', 'Question Text *', 'Option A *', 'Option B *', 'Option C *', 'Option D *', 'Correct (1-4) *', 'Marks']);
         hdr.height = 32;
         hdr.eachCell(cell => {
           cell.fill = HDR_FILL; cell.font = HDR_FONT;
@@ -103,13 +109,13 @@ function ExamImport({ user, onClose, onImported }) {
         });
         sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
         for (let i = 1; i <= 100; i++) {
-          const row = sheet.addRow([i, '', '', '', '', '', '']);
+          const row = sheet.addRow([i, '', '', '', '', '', '', '']);
           row.height = 20;
           row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
           row.getCell(1).font = { color: { argb: 'FF888888' } };
           row.getCell(2).alignment = { wrapText: true, vertical: 'middle' };
           if (i % 2 === 0) {
-            [2,3,4,5,6,7].forEach(col => { row.getCell(col).fill = ALT_FILL; });
+            [2,3,4,5,6,7,8].forEach(col => { row.getCell(col).fill = ALT_FILL; });
           }
           row.getCell(7).dataValidation = {
             type: 'list', allowBlank: true, formulae: ['"1,2,3,4"'],
@@ -117,6 +123,7 @@ function ExamImport({ user, onClose, onImported }) {
             errorTitle: 'Invalid Answer', error: '1=Option A, 2=Option B, 3=Option C, 4=Option D.'
           };
           row.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
+          row.getCell(8).alignment = { horizontal: 'center', vertical: 'middle' };
         }
       });
 
@@ -148,7 +155,7 @@ function ExamImport({ user, onClose, onImported }) {
 
       const cell = (row) => { const v = infoSheet.getCell('B' + row).value; return v == null ? '' : String(v).trim(); };
       const examName = cell(3), subject = cell(4), department = cell(5), semester = cell(6);
-      const durationRaw = cell(7), scheduleStart = cell(8), scheduleEnd = cell(9), totalQRaw = cell(10);
+      const durationRaw = cell(7), scheduleStart = cell(8), scheduleEnd = cell(9), totalQRaw = cell(10), passPctRaw = cell(11);
 
       if (!examName) errs.push('Exam Name is required (Exam Info B3).');
       if (!subject) errs.push('Subject / Course is required (Exam Info B4).');
@@ -164,6 +171,14 @@ function ExamImport({ user, onClose, onImported }) {
       if (!totalQRaw || isNaN(totalQPerSet) || totalQPerSet < 1)
         errs.push('Total Questions Per Set must be a positive number (Exam Info B10).');
 
+      let passingPercentage = 40;
+      if (passPctRaw) {
+        const parsedPass = parseInt(passPctRaw);
+        if (!isNaN(parsedPass) && parsedPass > 0 && parsedPass <= 100) {
+          passingPercentage = parsedPass;
+        }
+      }
+
       const parsedSets = {};
       for (const setName of SET_NAMES) {
         const sheet = wb.getWorksheet(setName);
@@ -177,6 +192,9 @@ function ExamImport({ user, onClose, onImported }) {
           const optC = row.getCell(5).value?.toString().trim() || '';
           const optD = row.getCell(6).value?.toString().trim() || '';
           const correctNum = parseInt(String(row.getCell(7).value ?? '').trim());
+          const marksVal = parseFloat(String(row.getCell(8).value ?? '').trim());
+          const qMarks = (!isNaN(marksVal) && marksVal > 0) ? marksVal : 1;
+
           if (!optA || !optB || !optC || !optD)
             setErrs.push(setName + ' row ' + rowIdx + ': All 4 options are required.');
           if (isNaN(correctNum) || correctNum < 1 || correctNum > 4)
@@ -184,7 +202,8 @@ function ExamImport({ user, onClose, onImported }) {
           questions.push({
             questionText: qText,
             options: [{ text: optA, imageUrl: null }, { text: optB, imageUrl: null }, { text: optC, imageUrl: null }, { text: optD, imageUrl: null }],
-            correctOptionIndex: Math.max(0, (correctNum || 1) - 1)
+            correctOptionIndex: Math.max(0, (correctNum || 1) - 1),
+            marks: qMarks
           });
         });
         if (questions.length === 0) errs.push('"' + setName + '" has no questions. All 4 sets must have at least 1 question.');
@@ -193,7 +212,7 @@ function ExamImport({ user, onClose, onImported }) {
       }
 
       if (errs.length > 0) { setErrors(errs); setLoading(false); return; }
-      setParsedData({ examName, subject, department, semester, durationMinutes, scheduleStart, scheduleEnd, totalQPerSet, sets: parsedSets });
+      setParsedData({ examName, subject, department, semester, durationMinutes, scheduleStart, scheduleEnd, totalQPerSet, passingPercentage, sets: parsedSets });
       setStep(2);
     } catch (err) {
       setErrors(['Failed to read Excel file: ' + err.message]);
@@ -212,6 +231,7 @@ function ExamImport({ user, onClose, onImported }) {
         durationMinutes: parsedData.durationMinutes,
         scheduleStart: parsedData.scheduleStart,
         scheduleEnd: parsedData.scheduleEnd,
+        passingPercentage: parsedData.passingPercentage || 40,
         status: 'draft',
         createdAt: new Date().toISOString(),
         importedFrom: 'excel',
@@ -231,6 +251,7 @@ function ExamImport({ user, onClose, onImported }) {
           durationMinutes: parsedData.durationMinutes,
           scheduleStart: parsedData.scheduleStart,
           scheduleEnd: parsedData.scheduleEnd,
+          passingPercentage: parsedData.passingPercentage || 40,
           status: 'draft',
           createdAt: new Date().toISOString(),
           createdById: user?.uid || null,
@@ -243,6 +264,7 @@ function ExamImport({ user, onClose, onImported }) {
           questionImageUrl: null,
           options: q.options,
           correctOptionIndex: q.correctOptionIndex,
+          marks: q.marks || 1,
           order: idx,
           department: parsedData.department || user?.department || 'Computer Science & Engineering'
         })));

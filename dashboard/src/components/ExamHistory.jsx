@@ -31,22 +31,34 @@ function ExamHistory({ user }) {
   // Compute student score
   const computeScore = (attempt, paperId) => {
     const paperQs = questions.filter(q => q.paperId === paperId);
-    const total = paperQs.length > 0 ? paperQs.length : (attempt.totalQuestions || 0);
-    if (total === 0) return { score: 0, total: 0, percent: 0 };
+    if (paperQs.length === 0) {
+      const scoreVal = attempt.score || 0;
+      const totalVal = attempt.totalMarks || attempt.totalQuestions || 0;
+      const percentVal = totalVal > 0 ? Math.round(((scoreVal / totalVal) * 100 + Number.EPSILON) * 100) / 100 : 0;
+      return { score: scoreVal, total: totalVal, totalQuestions: attempt.totalQuestions || 0, percent: percentVal };
+    }
 
     let score = 0;
+    let totalMarks = 0;
     const answers = attempt.answers || {};
     paperQs.forEach(q => {
+      const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+      totalMarks += qMarks;
       const ans = answers[q.id];
       if (ans !== undefined && ans === q.correctOptionIndex) {
-        score++;
+        score += qMarks;
       }
     });
 
+    const round2 = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+    const finalScore = round2(score);
+    const finalTotal = round2(totalMarks);
+
     return {
-      score,
-      total,
-      percent: Math.round((score / total) * 100)
+      score: finalScore,
+      total: finalTotal,
+      totalQuestions: paperQs.length,
+      percent: finalTotal > 0 ? round2((finalScore / finalTotal) * 100) : 0
     };
   };
 
@@ -198,6 +210,8 @@ function ExamHistory({ user }) {
       // Elapsed time total
       const totalElapsedTime = studentAtts.reduce((sum, a) => sum + (a.elapsedTime || 0), 0);
 
+      const passPct = Number(paperObj?.passingPercentage) > 0 ? Number(paperObj.passingPercentage) : (Number(examGrp.passingPercentage) > 0 ? Number(examGrp.passingPercentage) : 40);
+
       return {
         id: `${studentId}_${examGrp.subject}`,
         studentId: studentId,
@@ -210,8 +224,10 @@ function ExamHistory({ user }) {
         paperId: primaryAttempt.paperId,
         status: finalStatus,
         score: scoreObj.score,
-        totalQuestions: scoreObj.total,
+        totalMarks: scoreObj.total,
+        totalQuestions: scoreObj.totalQuestions,
         percentage: scoreObj.percent,
+        passingPercentage: passPct,
         warnings: totalWarnings,
         attemptsCount: attemptsCount,
         hadMalpractice: hadMalpractice || hadFocusLoss,
@@ -267,26 +283,33 @@ function ExamHistory({ user }) {
       'Score',
       'Total Marks',
       'Percentage (%)',
+      'Passing %',
+      'Result',
       'Status',
       'Time Spent (Sec)',
       'Warnings Count',
       'Submitted At'
     ];
 
-    const rows = exam.participants.map(p => [
-      `"${p.prnNumber}"`,
-      `"${p.studentName}"`,
-      `"${p.studentEmail}"`,
-      `"${exam.subject}"`,
-      `"${p.paperTitle}"`,
-      p.score,
-      p.totalQuestions,
-      `${p.percentage}%`,
-      p.status,
-      p.elapsedTime,
-      p.warnings,
-      `"${p.submittedAt ? formatDateTime(p.submittedAt) : 'N/A'}"`
-    ]);
+    const rows = exam.participants.map(p => {
+      const isPass = p.percentage >= (p.passingPercentage || 40);
+      return [
+        `"${p.prnNumber}"`,
+        `"${p.studentName}"`,
+        `"${p.studentEmail}"`,
+        `"${exam.subject}"`,
+        `"${p.paperTitle}"`,
+        p.score,
+        p.totalMarks,
+        `${p.percentage}%`,
+        `${p.passingPercentage || 40}%`,
+        isPass ? '"PASS"' : '"FAIL"',
+        p.status,
+        p.elapsedTime,
+        p.warnings,
+        `"${p.submittedAt ? formatDateTime(p.submittedAt) : 'N/A'}"`
+      ];
+    });
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -587,7 +610,8 @@ function ExamHistory({ user }) {
                           </thead>
                           <tbody>
                             {filteredParticipants.map(student => {
-                              const isPassed = student.percentage >= 40;
+                              const passThresh = student.passingPercentage || 40;
+                              const isPassed = student.percentage >= passThresh;
 
                               return (
                                 <tr key={student.id} style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(0, 0, 0, 0.05)' }}>
@@ -603,17 +627,22 @@ function ExamHistory({ user }) {
                                   </td>
                                   <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700 }}>
                                     {(student.status === 'submitted' || student.status === 'submitted_reattempt')
-                                      ? `${student.score} / ${student.totalQuestions}`
+                                      ? `${student.score} / ${student.totalMarks}`
                                       : '—'}
                                   </td>
                                   <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
                                     {(student.status === 'submitted' || student.status === 'submitted_reattempt') ? (
-                                      <span style={{
-                                        fontWeight: 700,
-                                        color: isPassed ? 'var(--color-success)' : 'var(--color-danger)'
-                                      }}>
-                                        {student.percentage}%
-                                      </span>
+                                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                                        <span style={{
+                                          fontWeight: 700,
+                                          color: isPassed ? 'var(--color-success)' : 'var(--color-danger)'
+                                        }}>
+                                          {student.percentage}%
+                                        </span>
+                                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                                          (Pass: {passThresh}%)
+                                        </span>
+                                      </div>
                                     ) : (
                                       '—'
                                     )}
@@ -725,11 +754,16 @@ function ExamHistory({ user }) {
             }}>
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>SCORE</span>
-                <strong>{reviewingParticipant.score} / {reviewingParticipant.totalQuestions}</strong>
+                <strong>{reviewingParticipant.score} / {reviewingParticipant.totalMarks}</strong>
               </div>
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>PERCENTAGE</span>
-                <strong>{reviewingParticipant.percentage}%</strong>
+                <strong style={{ color: reviewingParticipant.percentage >= (reviewingParticipant.passingPercentage || 40) ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                  {reviewingParticipant.percentage}%
+                </strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
+                  (Pass: {reviewingParticipant.passingPercentage || 40}%)
+                </span>
               </div>
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>STATUS</span>
@@ -758,6 +792,7 @@ function ExamHistory({ user }) {
                   const studentAnsIdx = answers[q.id];
                   const isUnanswered = studentAnsIdx === undefined;
                   const isCorrect = !isUnanswered && studentAnsIdx === q.correctOptionIndex;
+                  const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
                   
                   let bgColor = 'rgba(0,0,0,0.05)';
                   let icon = '⬜';
@@ -776,9 +811,14 @@ function ExamHistory({ user }) {
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
                         <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{icon}</span>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600 }}>
-                            Q{idx + 1}. {q.questionText.length > 120 ? q.questionText.substring(0, 120) + '...' : q.questionText}
-                          </p>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '4px' }}>
+                            <p style={{ margin: 0, fontWeight: 600 }}>
+                              Q{idx + 1}. {q.questionText.length > 120 ? q.questionText.substring(0, 120) + '...' : q.questionText}
+                            </p>
+                            <span className="badge badge-info" style={{ fontSize: '0.72rem' }}>
+                              {isCorrect ? `+${qMarks}` : '0'} / {qMarks} Marks
+                            </span>
+                          </div>
                           <div style={{ fontSize: '0.9rem' }}>
                             <div style={{ color: isUnanswered ? 'var(--text-muted)' : (isCorrect ? 'var(--color-success)' : 'var(--color-danger)') }}>
                               <strong>Student's Answer:</strong> {studentText}

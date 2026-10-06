@@ -24,19 +24,33 @@ function StudentDirectory() {
 
   // Grade calculation helper
   const computeAttemptScore = (attempt) => {
+    // If score & totalMarks were already saved on the attempt document
+    if (typeof attempt.score === 'number' && typeof attempt.totalMarks === 'number' && attempt.totalMarks > 0) {
+      return {
+        score: attempt.score,
+        total: attempt.totalMarks,
+        percent: Math.round(((attempt.score / attempt.totalMarks) * 100 + Number.EPSILON) * 100) / 100
+      };
+    }
+
     const paperQs = questions.filter((q) => q.paperId === attempt.paperId);
     if (paperQs.length === 0) return { score: 0, total: 0, percent: 0 };
 
     let score = 0;
+    let totalMarks = 0;
     paperQs.forEach((q) => {
+      const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+      totalMarks += qMarks;
       if (attempt.answers && attempt.answers[q.id] === q.correctOptionIndex) {
-        score++;
+        score += qMarks;
       }
     });
+    totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
+    score = Math.round((score + Number.EPSILON) * 100) / 100;
     return {
       score,
-      total: paperQs.length,
-      percent: Math.round((score / paperQs.length) * 100)
+      total: totalMarks,
+      percent: totalMarks > 0 ? Math.round(((score / totalMarks) * 100 + Number.EPSILON) * 100) / 100 : 0
     };
   };
 

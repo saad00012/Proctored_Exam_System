@@ -23,6 +23,7 @@ function QuestionBank({ onImportQuestion }) {
     { text: '' }
   ]);
   const [correctOption, setCorrectOption] = useState(0);
+  const [marks, setMarks] = useState('1');
   const [department, setDepartment] = useState(user?.department || departments[0] || '');
   const [subject, setSubject] = useState('');
 
@@ -52,6 +53,7 @@ function QuestionBank({ onImportQuestion }) {
         questionText,
         options,
         correctOptionIndex: correctOption,
+        marks: Number(marks) > 0 ? Number(marks) : 1,
         subject,
         department,
         tags: [],
@@ -61,6 +63,7 @@ function QuestionBank({ onImportQuestion }) {
         createdAt: new Date().toISOString(),
       });
       setQuestionText('');
+      setMarks('1');
       setOptions([{ text: '' }, { text: '' }, { text: '' }, { text: '' }]);
       setCorrectOption(0);
       setSubject('');
@@ -131,7 +134,7 @@ function QuestionBank({ onImportQuestion }) {
               required
               rows="3"
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr', gap: '1rem' }}>
               <select className="input-field" value={department} onChange={e => setDepartment(e.target.value)} required>
                 <option value="">Select Department</option>
                 {departments.map(d => <option key={d} value={d}>{d}</option>)}
@@ -141,6 +144,16 @@ function QuestionBank({ onImportQuestion }) {
                 placeholder="Subject"
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
+                required
+              />
+              <input
+                type="number"
+                className="input-field"
+                placeholder="Marks (default 1)"
+                value={marks}
+                onChange={e => setMarks(e.target.value)}
+                min="0.5"
+                step="0.5"
                 required
               />
             </div>
@@ -200,9 +213,12 @@ function QuestionBank({ onImportQuestion }) {
           {filteredQuestions.map(q => (
             <div key={q.id} style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(0,0,0,0.1)' }}>
               <div className="flex-between" style={{ marginBottom: '0.5rem' }}>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <span className="badge badge-info">{q.department}</span>
                   <span className="badge badge-neutral">{q.subject}</span>
+                  <span className="badge badge-info" style={{ fontWeight: 600 }}>
+                    +{Number(q.marks) > 0 ? Number(q.marks) : 1} {Number(q.marks) === 1 ? 'Mark' : 'Marks'}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   {onImportQuestion && (
