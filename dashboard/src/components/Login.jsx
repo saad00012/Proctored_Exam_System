@@ -271,7 +271,23 @@ function Login({ onLoginSuccess }) {
           >
             {isLogin ? 'Create an account' : 'Already have an account? Sign In'}
           </button>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
+          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px dashed var(--border-color)', textAlign: 'center' }}>
+            <a
+              href="/download"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                color: 'var(--primary)',
+                fontWeight: 600,
+                fontSize: '0.86rem',
+                textDecoration: 'none'
+              }}
+            >
+              <span>📲</span> Looking for the Student App? <strong>Download APK Here</strong> →
+            </a>
+          </div>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', textAlign: 'center' }}>
             Restricted to whitelisted college email domains.
           </p>
         </div>

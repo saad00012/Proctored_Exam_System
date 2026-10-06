@@ -14,6 +14,7 @@ import DepartmentManagement from './components/DepartmentManagement';
 import AuditLog from './components/AuditLog';
 import QuestionBank from './components/QuestionBank';
 import HelpCenter from './components/HelpCenter';
+import AppDownload from './components/AppDownload';
 import API_BASE_URL from './config';
 import { parseApiResponse } from './utils/api';
 
@@ -35,6 +36,17 @@ function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [policyLoading, setPolicyLoading] = useState(false);
   const [dbActionLoading, setDbActionLoading] = useState(false);
+
+  // Path detection for public /download or /apps portal
+  const [currentPath, setCurrentPath] = useState(window.location.pathname.toLowerCase());
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname.toLowerCase());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // App Update Policy State
   const [appVersionLoading, setAppVersionLoading] = useState(false);
@@ -176,6 +188,18 @@ function App() {
     }
   };
 
+  // Public download routes — no login required
+  const isDownloadRoute = 
+    currentPath.startsWith('/download') ||
+    currentPath.startsWith('/apps') ||
+    currentPath === '/app' ||
+    currentPath === '/apk' ||
+    window.location.hash === '#download';
+
+  if (isDownloadRoute) {
+    return <AppDownload />;
+  }
+
   if (authLoading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main)' }}>
@@ -273,6 +297,13 @@ function App() {
             onClick={() => setActiveTab('settings')}
           >
             <span className="sidebar-icon">⚙️</span> Faculty Settings
+          </div>
+
+          <div
+            className={`sidebar-link ${activeTab === 'download' ? 'active' : ''}`}
+            onClick={() => setActiveTab('download')}
+          >
+            <span className="sidebar-icon">📲</span> Download App
           </div>
 
           <div
@@ -402,6 +433,8 @@ function App() {
                 ? '📋 Security & Audit Trail'
                 : activeTab === 'questionbank'
                 ? '📖 Central Question Bank'
+                : activeTab === 'download'
+                ? '📲 Student App Download Portal'
                 : activeTab === 'help'
                 ? '❓ Help & Support Center'
                 : activeTab === 'maintenance'
@@ -565,6 +598,7 @@ function App() {
         {activeTab === 'users' && <UserManagement user={user} />}
         {activeTab === 'auditlog' && isSuperAdmin && <AuditLog />}
         {activeTab === 'questionbank' && <QuestionBank />}
+        {activeTab === 'download' && <AppDownload />}
         {activeTab === 'help' && <HelpCenter />}
 
         {activeTab === 'maintenance' && isSuperAdmin && (
