@@ -286,6 +286,52 @@ router.post('/policies', verifyToken, async (req, res) => {
   }
 });
 
+// App Version & Update Settings GET (Public / Authenticated)
+router.get('/app-version', async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+    const versionDoc = await db.collection('settings').doc('app_version').get();
+    if (versionDoc.exists) {
+      return res.json(versionDoc.data());
+    }
+    return res.json({
+      minRequiredVersionCode: 1,
+      latestVersionCode: 1,
+      latestVersionName: '1.0',
+      apkDownloadUrl: '',
+      releaseNotes: '',
+      forceUpdate: false
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// App Version & Update Settings POST - ADMIN ONLY
+router.post('/app-version', verifyToken, async (req, res) => {
+  if (!isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Forbidden: Only administrators can configure app updates.' });
+  }
+  const { minRequiredVersionCode, latestVersionCode, latestVersionName, apkDownloadUrl, releaseNotes, forceUpdate } = req.body;
+  try {
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+    const payload = {
+      minRequiredVersionCode: parseInt(minRequiredVersionCode) || 1,
+      latestVersionCode: parseInt(latestVersionCode) || 1,
+      latestVersionName: String(latestVersionName || '1.0').trim(),
+      apkDownloadUrl: String(apkDownloadUrl || '').trim(),
+      releaseNotes: String(releaseNotes || '').trim(),
+      forceUpdate: Boolean(forceUpdate),
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user.email || req.user.uid
+    };
+    await db.collection('settings').doc('app_version').set(payload, { merge: true });
+    res.json({ success: true, message: 'App update policy saved successfully.', settings: payload });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Clear All Exam Attempts & Violations - ADMIN ONLY
 router.post('/database/clear-attempts', verifyToken, async (req, res) => {
   if (!isAdmin(req.user)) {

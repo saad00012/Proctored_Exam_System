@@ -36,6 +36,62 @@ function App() {
   const [policyLoading, setPolicyLoading] = useState(false);
   const [dbActionLoading, setDbActionLoading] = useState(false);
 
+  // App Update Policy State
+  const [appVersionLoading, setAppVersionLoading] = useState(false);
+  const [appVersionConfig, setAppVersionConfig] = useState({
+    minRequiredVersionCode: 1,
+    latestVersionCode: 1,
+    latestVersionName: '1.0',
+    apkDownloadUrl: '',
+    releaseNotes: '',
+    forceUpdate: false
+  });
+
+  // Load app_version settings on mount
+  useEffect(() => {
+    const fetchAppVersion = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/admin/app-version`);
+        if (res.ok) {
+          const data = await res.json();
+          setAppVersionConfig({
+            minRequiredVersionCode: data.minRequiredVersionCode ?? 1,
+            latestVersionCode: data.latestVersionCode ?? 1,
+            latestVersionName: data.latestVersionName || '1.0',
+            apkDownloadUrl: data.apkDownloadUrl || '',
+            releaseNotes: data.releaseNotes || '',
+            forceUpdate: Boolean(data.forceUpdate)
+          });
+        }
+      } catch (err) {
+        console.warn('Could not load app version config:', err.message);
+      }
+    };
+    fetchAppVersion();
+  }, []);
+
+  const handleSaveAppVersion = async (e) => {
+    e.preventDefault();
+    setAppVersionLoading(true);
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE_URL}/admin/app-version`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(appVersionConfig)
+      });
+      const data = await parseApiResponse(response);
+      alert(data.message || 'App update policy saved successfully!');
+    } catch (err) {
+      alert('Failed to save app update policy: ' + err.message);
+    } finally {
+      setAppVersionLoading(false);
+    }
+  };
+
   // Global Policies Save
   const handleSavePolicies = async (e) => {
     e.preventDefault();
@@ -581,6 +637,115 @@ function App() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* App Updates & Version Control */}
+            <div className="glass-card" style={{ marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                <h3 style={{ margin: 0 }}>
+                  📱 App Version & Update Controls
+                </h3>
+                <span className={`badge ${appVersionConfig.forceUpdate ? 'badge-danger' : 'badge-success'}`}>
+                  {appVersionConfig.forceUpdate ? '🔒 Mandatory Force Update Active' : '🟢 Normal Mode (No Lockout)'}
+                </span>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                Control student APK updates. When <strong>Force Update</strong> is enabled, any student running an app version below the minimum required version code will be locked out with a mandatory update screen.
+              </p>
+
+              <form onSubmit={handleSaveAppVersion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                      Minimum Required Version Code
+                    </label>
+                    <input
+                      type="number"
+                      className="input-field"
+                      value={appVersionConfig.minRequiredVersionCode}
+                      onChange={(e) => setAppVersionConfig({ ...appVersionConfig, minRequiredVersionCode: parseInt(e.target.value) || 1 })}
+                      min="1"
+                      required
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                      Apps with Version Code below this will be blocked if Force Update is ON.
+                    </small>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                      Latest Released Version Code
+                    </label>
+                    <input
+                      type="number"
+                      className="input-field"
+                      value={appVersionConfig.latestVersionCode}
+                      onChange={(e) => setAppVersionConfig({ ...appVersionConfig, latestVersionCode: parseInt(e.target.value) || 1 })}
+                      min="1"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                      Latest Version Name (e.g., 2.0.1)
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={appVersionConfig.latestVersionName}
+                      onChange={(e) => setAppVersionConfig({ ...appVersionConfig, latestVersionName: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                    Direct APK Download URL / Release Link
+                  </label>
+                  <input
+                    type="url"
+                    className="input-field"
+                    placeholder="https://drive.google.com/... or https://github.com/.../releases"
+                    value={appVersionConfig.apkDownloadUrl}
+                    onChange={(e) => setAppVersionConfig({ ...appVersionConfig, apkDownloadUrl: e.target.value })}
+                  />
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    Tapping "Update App" on the student's phone opens this link directly.
+                  </small>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                    Release Notes / Update Message
+                  </label>
+                  <textarea
+                    className="input-field"
+                    rows="2"
+                    placeholder="Describe what changed in this version..."
+                    value={appVersionConfig.releaseNotes}
+                    onChange={(e) => setAppVersionConfig({ ...appVersionConfig, releaseNotes: e.target.value })}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <input
+                    type="checkbox"
+                    id="forceUpdateToggle"
+                    style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
+                    checked={appVersionConfig.forceUpdate}
+                    onChange={(e) => setAppVersionConfig({ ...appVersionConfig, forceUpdate: e.target.checked })}
+                  />
+                  <label htmlFor="forceUpdateToggle" style={{ cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, color: appVersionConfig.forceUpdate ? '#ef4444' : 'var(--text-primary)' }}>
+                    {appVersionConfig.forceUpdate ? '⚠️ Force Update is ENABLED (Older apps cannot be used)' : 'Enable Force Update (Lock older apps until updated)'}
+                  </label>
+                </div>
+
+                <button type="submit" className="btn btn-primary" style={{ width: 'fit-content' }} disabled={appVersionLoading}>
+                  {appVersionLoading ? 'Saving...' : '💾 Save App Update Settings'}
+                </button>
+              </form>
             </div>
           </div>
         )}
