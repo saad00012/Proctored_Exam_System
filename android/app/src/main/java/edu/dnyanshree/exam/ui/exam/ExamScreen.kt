@@ -75,6 +75,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 
 import android.os.SystemClock
+import java.util.Locale
 import edu.dnyanshree.exam.data.model.Question
 import edu.dnyanshree.exam.data.model.Option
 import edu.dnyanshree.exam.data.network.NetworkMonitor
