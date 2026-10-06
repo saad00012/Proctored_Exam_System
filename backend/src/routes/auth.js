@@ -12,9 +12,9 @@ router.get('/health', (req, res) => {
   });
 });
 
-// 2. Validate email domain and mobile before registration
+// 2. Validate email domain, mobile, and PRN uniqueness before registration
 router.post('/register-check', async (req, res) => {
-  const { email, phoneNumber } = req.body;
+  const { email, phoneNumber, prnNumber } = req.body;
   if (!email || !phoneNumber) {
     return res.status(400).json({ error: 'Email and phone number are required.' });
   }
@@ -32,11 +32,25 @@ router.post('/register-check', async (req, res) => {
 
   try {
     const domainDoc = await db.collection('allowed_domains').doc(domain).get();
-    if (domainDoc.exists && domainDoc.data().isActive) {
-      return res.json({ allowed: true, domain });
-    } else {
+    if (!domainDoc.exists || !domainDoc.data().isActive) {
       return res.status(400).json({ allowed: false, error: `Email domain @${domain} is not whitelisted or is inactive.` });
     }
+
+    // Check PRN uniqueness if provided
+    if (prnNumber) {
+      const cleanPrn = String(prnNumber).trim().toUpperCase();
+      if (cleanPrn !== 'N/A' && cleanPrn.length > 0) {
+        const prnSnap = await db.collection('users').where('prnNumber', '==', cleanPrn).limit(1).get();
+        if (!prnSnap.empty) {
+          return res.status(400).json({ 
+            allowed: false, 
+            error: `PRN ${cleanPrn} is already registered with another account. Please login or contact administration.` 
+          });
+        }
+      }
+    }
+
+    return res.json({ allowed: true, domain });
   } catch (error) {
     console.error('Error in /register-check:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -56,6 +70,21 @@ router.post('/create-profile', verifyToken, async (req, res) => {
 
   const isAdminAccount = role === 'superadmin' || role === 'admin' || email.toLowerCase().startsWith('admin');
   const isTeacherAccount = role === 'teacher' || role === 'faculty';
+  const cleanPrn = isAdminAccount || isTeacherAccount ? 'N/A' : (prnNumber ? String(prnNumber).trim().toUpperCase() : 'N/A');
+
+  if (db && cleanPrn !== 'N/A') {
+    try {
+      const existingPrnSnap = await db.collection('users').where('prnNumber', '==', cleanPrn).get();
+      const duplicate = existingPrnSnap.docs.find(doc => doc.id !== uid);
+      if (duplicate) {
+        return res.status(400).json({ 
+          error: `PRN ${cleanPrn} is already assigned to another account (${duplicate.data().email}).` 
+        });
+      }
+    } catch (err) {
+      console.warn('Could not verify PRN uniqueness in /create-profile:', err.message);
+    }
+  }
 
   const userProfile = {
     uid,

@@ -616,10 +616,17 @@ private fun handleRegisterStart(
                 return@launch
             }
 
+            val cleanPrn = prn.trim().uppercase()
+            if (cleanPrn.isBlank()) {
+                onLoading(false)
+                onError("Please enter a valid PRN number.")
+                return@launch
+            }
+
             var allowed = false
+            val firestore = FirebaseFirestore.getInstance()
             try {
                 // Check Firestore allowed_domains collection
-                val firestore = FirebaseFirestore.getInstance()
                 val domainDoc = firestore.collection("allowed_domains").document(domain).get().await()
                 if (domainDoc.exists()) {
                     allowed = domainDoc.getBoolean("isActive") == true
@@ -631,30 +638,52 @@ private fun handleRegisterStart(
                 allowed = (domain == "dnyanshree.edu.in")
             }
 
-            // Backend validation
-            if (allowed) {
-                try {
-                    val checkBody = JSONObject().apply {
-                        put("email", email)
-                        put("phoneNumber", phone)
-                    }.toString()
-
-                    val checkResponse = makeApiRequest("/register-check", "POST", checkBody)
-                    if (checkResponse.has("allowed")) {
-                        allowed = checkResponse.optBoolean("allowed", false)
-                    }
-                } catch (e: Exception) {
-                    // If network error occurred, keep Firestore whitelist evaluation
-                }
-            }
-
             if (!allowed) {
                 onLoading(false)
                 onError("Registration rejected: @$domain is not a whitelisted college domain. Please use your @dnyanshree.edu.in email.")
                 return@launch
             }
 
-            // Step 2: Create user in Firebase Auth
+            // Step 2: Validate PRN uniqueness directly in Firestore
+            try {
+                val prnQuery = firestore.collection("users")
+                    .whereEqualTo("prnNumber", cleanPrn)
+                    .limit(1)
+                    .get()
+                    .await()
+
+                if (!prnQuery.isEmpty) {
+                    onLoading(false)
+                    onError("PRN $cleanPrn is already registered. If this is your account, please log in.")
+                    return@launch
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("AuthScreen", "Could not check PRN uniqueness offline: ${e.message}")
+            }
+
+            // Step 3: Backend validation (domain + PRN uniqueness)
+            try {
+                val checkBody = JSONObject().apply {
+                    put("email", email)
+                    put("phoneNumber", phone)
+                    put("prnNumber", cleanPrn)
+                }.toString()
+
+                val checkResponse = makeApiRequest("/register-check", "POST", checkBody)
+                if (checkResponse.has("allowed")) {
+                    allowed = checkResponse.optBoolean("allowed", false)
+                }
+                if (!allowed) {
+                    val serverError = checkResponse.optString("error", "Registration rejected by server policy.")
+                    onLoading(false)
+                    onError(serverError)
+                    return@launch
+                }
+            } catch (e: Exception) {
+                // Keep Firestore whitelist evaluation if network failed
+            }
+
+            // Step 4: Create user in Firebase Auth
             val firebaseAuth = FirebaseAuth.getInstance()
             firebaseAuth.createUserWithEmailAndPassword(email, password)
                 .addOnCompleteListener { task ->
