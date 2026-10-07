@@ -32,7 +32,7 @@ function shuffleArrayWithRng(array, rng) {
 
 // 1. Start Exam
 router.post('/start-exam', verifyToken, async (req, res) => {
-  let { paperId } = req.body;
+  let { paperId, appVersionCode } = req.body;
   if (!paperId) {
     return res.status(400).json({ error: 'Paper ID is required.' });
   }
@@ -47,6 +47,32 @@ router.post('/start-exam', verifyToken, async (req, res) => {
   try {
     if (!db) {
       return res.status(500).json({ error: 'Database connection is required to start an exam.' });
+    }
+
+    // 0. Hard Server-Side Version Gate for Students
+    if (req.user.role === 'student') {
+      try {
+        const verDoc = await db.collection('settings').doc('app_version').get();
+        if (verDoc.exists) {
+          const verData = verDoc.data();
+          const forceUpdate = Boolean(verData.forceUpdate);
+          const minRequired = parseInt(verData.minRequiredVersionCode) || 1;
+          const studentVer = parseInt(appVersionCode || req.headers['x-app-version-code']) || 0;
+
+          if (forceUpdate && studentVer < minRequired) {
+            const downloadUrl = verData.apkDownloadUrl || 'https://exam.dnyanshree.edu.in/download';
+            return res.status(426).json({
+              error: `App Update Required: Your app version is outdated (v${studentVer || 'legacy'}). You must update to the latest version to take this exam.`,
+              code: 'APP_UPDATE_REQUIRED',
+              minRequiredVersionCode: minRequired,
+              latestVersionName: verData.latestVersionName || 'Latest',
+              apkDownloadUrl: downloadUrl
+            });
+          }
+        }
+      } catch (verErr) {
+        console.warn('Version check warning:', verErr.message);
+      }
     }
 
     // 1. Fetch Paper details

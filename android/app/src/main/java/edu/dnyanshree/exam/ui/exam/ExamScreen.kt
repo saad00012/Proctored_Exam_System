@@ -481,8 +481,10 @@ fun ExamScreen(
             }
 
             // 1. Call server to start/check attempt (authoritative check)
+            val currentAppVersionCode = edu.dnyanshree.exam.BuildConfig.VERSION_CODE
             val startBody = JSONObject().apply {
                 put("paperId", paperId)
+                put("appVersionCode", currentAppVersionCode)
             }.toString()
 
             val startResponse = makeApiRequest("/start-exam", "POST", startBody, token)

@@ -533,4 +533,67 @@ router.get('/audit-logs', verifyToken, async (req, res) => {
   }
 });
 
+// ── Broadcast Notice Endpoints ──────────────────────────────────────────
+
+// GET Active Broadcast Notice (Accessible to Teachers & Admins)
+router.get('/broadcast-notice', async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+    const doc = await db.collection('settings').doc('broadcast_notice').get();
+    if (doc.exists) {
+      return res.json(doc.data());
+    }
+    return res.json({
+      active: false,
+      title: '',
+      message: '',
+      severity: 'info', // 'danger' | 'warning' | 'info' | 'success'
+      targetAudience: 'all_faculty',
+      updatedAt: null,
+      updatedBy: ''
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Broadcast Notice (SUPER ADMIN ONLY)
+router.post('/broadcast-notice', verifyToken, async (req, res) => {
+  if (!isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Forbidden: Only administrators can publish broadcast notices.' });
+  }
+
+  const { active, title, message, severity, targetAudience } = req.body;
+  try {
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+
+    const payload = {
+      active: Boolean(active),
+      title: String(title || '').trim(),
+      message: String(message || '').trim(),
+      severity: ['danger', 'warning', 'info', 'success'].includes(severity) ? severity : 'info',
+      targetAudience: targetAudience || 'all_faculty',
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user.email || req.user.name || 'Admin'
+    };
+
+    await db.collection('settings').doc('broadcast_notice').set(payload, { merge: true });
+
+    // Also record in audit log
+    try {
+      await db.collection('audit_logs').add({
+        timestamp: new Date().toISOString(),
+        action: payload.active ? 'publish_broadcast_notice' : 'disable_broadcast_notice',
+        teacherEmail: req.user.email,
+        teacherName: req.user.name || 'Super Admin',
+        details: payload.active ? `Published notice: "${payload.title}"` : 'Disabled broadcast notice'
+      });
+    } catch (_) {}
+
+    res.json({ success: true, message: 'Broadcast notice updated successfully.', notice: payload });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

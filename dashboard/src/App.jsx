@@ -15,6 +15,7 @@ import AuditLog from './components/AuditLog';
 import QuestionBank from './components/QuestionBank';
 import HelpCenter from './components/HelpCenter';
 import AppDownload from './components/AppDownload';
+import BroadcastNotice from './components/BroadcastNotice';
 import API_BASE_URL from './config';
 import { parseApiResponse } from './utils/api';
 
@@ -58,6 +59,32 @@ function App() {
     releaseNotes: '',
     forceUpdate: false
   });
+
+  // Live Broadcast Notice State (visible to faculty & admins)
+  const [broadcastNotice, setBroadcastNotice] = useState(null);
+  const [dismissedNotice, setDismissedNotice] = useState(false);
+
+  // Load broadcast notice on mount and poll every 60s
+  useEffect(() => {
+    const fetchBroadcastNotice = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/admin/broadcast-notice`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.active && data.title) {
+            setBroadcastNotice(data);
+          } else {
+            setBroadcastNotice(null);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch broadcast notice:', err.message);
+      }
+    };
+    fetchBroadcastNotice();
+    const interval = setInterval(fetchBroadcastNotice, 45000); // 45s refresh
+    return () => clearInterval(interval);
+  }, []);
 
   // Load app_version settings on mount
   useEffect(() => {
@@ -329,6 +356,12 @@ function App() {
                 <span className="sidebar-icon">📋</span> Audit Log
               </div>
               <div
+                className={`sidebar-link ${activeTab === 'broadcast' ? 'active' : ''}`}
+                onClick={() => setActiveTab('broadcast')}
+              >
+                <span className="sidebar-icon">📢</span> Broadcast Notice
+              </div>
+              <div
                 className={`sidebar-link ${activeTab === 'maintenance' ? 'active' : ''}`}
                 onClick={() => setActiveTab('maintenance')}
               >
@@ -431,6 +464,8 @@ function App() {
                 ? (isSuperAdmin ? '🔐 User Management' : '🎓 Department Student Management')
                 : activeTab === 'auditlog'
                 ? '📋 Security & Audit Trail'
+                : activeTab === 'broadcast'
+                ? '📢 Faculty Broadcast Notice'
                 : activeTab === 'questionbank'
                 ? '📖 Central Question Bank'
                 : activeTab === 'download'
@@ -453,6 +488,81 @@ function App() {
             </button>
           </div>
         </header>
+
+        {/* ── Active Broadcast Banner for Faculty & Admins ───────────────── */}
+        {broadcastNotice && broadcastNotice.active && !dismissedNotice && (
+          <div style={{
+            margin: '0 0 1.5rem 0',
+            padding: '1.15rem 1.4rem',
+            borderRadius: '12px',
+            border: `1.5px solid ${
+              broadcastNotice.severity === 'danger' ? 'rgba(239, 68, 68, 0.5)' :
+              broadcastNotice.severity === 'warning' ? 'rgba(245, 158, 11, 0.5)' :
+              broadcastNotice.severity === 'success' ? 'rgba(16, 185, 129, 0.5)' :
+              'rgba(59, 130, 246, 0.5)'
+            }`,
+            background: broadcastNotice.severity === 'danger' ? 'rgba(239, 68, 68, 0.12)' :
+              broadcastNotice.severity === 'warning' ? 'rgba(245, 158, 11, 0.12)' :
+              broadcastNotice.severity === 'success' ? 'rgba(16, 185, 129, 0.12)' :
+              'rgba(59, 130, 246, 0.12)',
+            boxShadow: 'var(--shadow-sm)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '1rem',
+            position: 'relative'
+          }}>
+            <span style={{ fontSize: '1.75rem', lineHeight: 1 }}>
+              {broadcastNotice.severity === 'danger' ? '🚨' :
+               broadcastNotice.severity === 'warning' ? '⚠️' :
+               broadcastNotice.severity === 'success' ? '✅' : '📢'}
+            </span>
+            <div style={{ flex: 1, textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
+                <span className={`badge ${
+                  broadcastNotice.severity === 'danger' ? 'badge-danger' :
+                  broadcastNotice.severity === 'warning' ? 'badge-warning' :
+                  broadcastNotice.severity === 'success' ? 'badge-success' : 'badge-info'
+                }`} style={{ fontSize: '0.7rem', fontWeight: 800 }}>
+                  OFFICIAL BROADCAST
+                </span>
+                <h3 style={{
+                  margin: 0,
+                  fontSize: '1.05rem',
+                  fontWeight: 700,
+                  color: broadcastNotice.severity === 'danger' ? '#ef4444' :
+                    broadcastNotice.severity === 'warning' ? '#f59e0b' :
+                    broadcastNotice.severity === 'success' ? '#10b981' : '#3b82f6'
+                }}>
+                  {broadcastNotice.title}
+                </h3>
+              </div>
+              <p style={{
+                margin: 0,
+                fontSize: '0.92rem',
+                color: 'var(--text-primary)',
+                lineHeight: 1.55,
+                fontWeight: 500
+              }}>
+                {broadcastNotice.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setDismissedNotice(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '1.1rem',
+                padding: '0.2rem 0.4rem',
+                lineHeight: 1
+              }}
+              title="Dismiss for this session"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Tab Views */}
         {activeTab === 'overview' && (
@@ -597,6 +707,7 @@ function App() {
         {activeTab === 'settings' && <TeacherSettings user={user} />}
         {activeTab === 'users' && <UserManagement user={user} />}
         {activeTab === 'auditlog' && isSuperAdmin && <AuditLog />}
+        {activeTab === 'broadcast' && isSuperAdmin && <BroadcastNotice />}
         {activeTab === 'questionbank' && <QuestionBank />}
         {activeTab === 'download' && <AppDownload />}
         {activeTab === 'help' && <HelpCenter />}
