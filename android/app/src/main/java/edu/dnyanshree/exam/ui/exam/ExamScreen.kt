@@ -288,9 +288,6 @@ fun ExamScreen(
     }
 
     // Native Screenshot Blocker
-    // [TEMPORARY FOR PRESENTATION]: Commented out FLAG_SECURE to allow screen sharing/mirroring.
-    // Uncomment the block below after presentation to re-enable screenshot and mirroring block.
-    /*
     DisposableEffect(Unit) {
         val activity = context as? Activity
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -298,7 +295,6 @@ fun ExamScreen(
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
-    */
 
     // Native Focus Loss / App background tracker (Violation handler using backgroundScope calling server)
     DisposableEffect(lifecycleOwner) {

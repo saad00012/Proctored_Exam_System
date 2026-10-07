@@ -18,9 +18,8 @@ class MainActivity : ComponentActivity() {
 
     edu.dnyanshree.exam.theme.ThemeManager.init(this)
 
-    // [TEMPORARY FOR PRESENTATION]: Commented out FLAG_SECURE to allow screen sharing/mirroring.
-    // Uncomment the line below after presentation to re-enable screenshot and mirroring block.
-    // window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    // Globally enforce screenshot and screen recording blocking, which also thwarts Assistant screenshots (Circle to Search)
+    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
     enableEdgeToEdge()
     setContent {
