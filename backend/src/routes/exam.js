@@ -49,6 +49,7 @@ router.post('/start-exam', verifyToken, async (req, res) => {
       return res.status(500).json({ error: 'Database connection is required to start an exam.' });
     }
 
+    /* TEMPORARILY DISABLED FOR SCHEDULED EXAMS
     // 0. Hard Server-Side Version Gate for Students
     if (req.user.role === 'student') {
       try {
@@ -75,6 +76,7 @@ router.post('/start-exam', verifyToken, async (req, res) => {
       }
     }
 
+    */
     // 1. Fetch Paper details
     const paperDoc = await db.collection('papers').doc(paperId).get();
     if (!paperDoc.exists) {
