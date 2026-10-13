@@ -62,9 +62,11 @@ function App() {
 
   // Live Broadcast Notice State (visible to faculty & admins)
   const [broadcastNotice, setBroadcastNotice] = useState(null);
-  const [dismissedNotice, setDismissedNotice] = useState(false);
+  const [acknowledgedNoticeId, setAcknowledgedNoticeId] = useState(() => {
+    return localStorage.getItem('ack_broadcast_notice_id') || '';
+  });
 
-  // Load broadcast notice on mount and poll every 60s
+  // Load broadcast notice on mount and poll every 15s for urgent broadcasts
   useEffect(() => {
     const fetchBroadcastNotice = async () => {
       try {
@@ -82,7 +84,7 @@ function App() {
       }
     };
     fetchBroadcastNotice();
-    const interval = setInterval(fetchBroadcastNotice, 45000); // 45s refresh
+    const interval = setInterval(fetchBroadcastNotice, 15000); // 15s refresh for quick delivery
     return () => clearInterval(interval);
   }, []);
 
@@ -489,80 +491,161 @@ function App() {
           </div>
         </header>
 
-        {/* ── Active Broadcast Banner for Faculty & Admins ───────────────── */}
-        {broadcastNotice && broadcastNotice.active && !dismissedNotice && (
-          <div style={{
-            margin: '0 0 1.5rem 0',
-            padding: '1.15rem 1.4rem',
-            borderRadius: '12px',
-            border: `1.5px solid ${
-              broadcastNotice.severity === 'danger' ? 'rgba(239, 68, 68, 0.5)' :
-              broadcastNotice.severity === 'warning' ? 'rgba(245, 158, 11, 0.5)' :
-              broadcastNotice.severity === 'success' ? 'rgba(16, 185, 129, 0.5)' :
-              'rgba(59, 130, 246, 0.5)'
-            }`,
-            background: broadcastNotice.severity === 'danger' ? 'rgba(239, 68, 68, 0.12)' :
-              broadcastNotice.severity === 'warning' ? 'rgba(245, 158, 11, 0.12)' :
-              broadcastNotice.severity === 'success' ? 'rgba(16, 185, 129, 0.12)' :
-              'rgba(59, 130, 246, 0.12)',
-            boxShadow: 'var(--shadow-sm)',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '1rem',
-            position: 'relative'
-          }}>
-            <span style={{ fontSize: '1.75rem', lineHeight: 1 }}>
-              {broadcastNotice.severity === 'danger' ? '🚨' :
-               broadcastNotice.severity === 'warning' ? '⚠️' :
-               broadcastNotice.severity === 'success' ? '✅' : '📢'}
-            </span>
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
-                <span className={`badge ${
-                  broadcastNotice.severity === 'danger' ? 'badge-danger' :
-                  broadcastNotice.severity === 'warning' ? 'badge-warning' :
-                  broadcastNotice.severity === 'success' ? 'badge-success' : 'badge-info'
-                }`} style={{ fontSize: '0.7rem', fontWeight: 800 }}>
-                  OFFICIAL BROADCAST
-                </span>
-                <h3 style={{
-                  margin: 0,
-                  fontSize: '1.05rem',
-                  fontWeight: 700,
-                  color: broadcastNotice.severity === 'danger' ? '#ef4444' :
-                    broadcastNotice.severity === 'warning' ? '#f59e0b' :
-                    broadcastNotice.severity === 'success' ? '#10b981' : '#3b82f6'
-                }}>
-                  {broadcastNotice.title}
-                </h3>
-              </div>
-              <p style={{
-                margin: 0,
-                fontSize: '0.92rem',
-                color: 'var(--text-primary)',
-                lineHeight: 1.55,
-                fontWeight: 500
+        {/* ── Blocking Modal Popup for Official Admin Broadcast ────────── */}
+        {(() => {
+          if (!broadcastNotice || !broadcastNotice.active || !broadcastNotice.title) return null;
+          const currentNoticeId = `${broadcastNotice.title}_${broadcastNotice.updatedAt || ''}`;
+          if (acknowledgedNoticeId === currentNoticeId) return null;
+
+          const isDanger = broadcastNotice.severity === 'danger';
+          const isWarning = broadcastNotice.severity === 'warning';
+          const isSuccess = broadcastNotice.severity === 'success';
+
+          const accentColor = isDanger ? '#ef4444' : isWarning ? '#f59e0b' : isSuccess ? '#10b981' : '#3b82f6';
+          const bgAccent = isDanger ? 'rgba(239, 68, 68, 0.12)' : isWarning ? 'rgba(245, 158, 11, 0.12)' : isSuccess ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)';
+          const icon = isDanger ? '🚨' : isWarning ? '⚠️' : isSuccess ? '✅' : '📢';
+
+          const handleAcknowledge = () => {
+            localStorage.setItem('ack_broadcast_notice_id', currentNoticeId);
+            setAcknowledgedNoticeId(currentNoticeId);
+          };
+
+          return (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 99999,
+              padding: '1.5rem',
+              animation: 'fadeIn 0.2s ease-out'
+            }}>
+              <div style={{
+                background: 'var(--bg-card, #1e293b)',
+                border: `2px solid ${accentColor}`,
+                borderRadius: '18px',
+                maxWidth: '680px',
+                width: '100%',
+                boxShadow: `0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 35px ${accentColor}33`,
+                overflow: 'hidden',
+                textAlign: 'left',
+                display: 'flex',
+                flexDirection: 'column'
               }}>
-                {broadcastNotice.message}
-              </p>
+                {/* Header */}
+                <div style={{
+                  background: bgAccent,
+                  padding: '1.4rem 1.75rem',
+                  borderBottom: `1px solid ${accentColor}40`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem'
+                }}>
+                  <div style={{
+                    fontSize: '2.4rem',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '54px',
+                    height: '54px',
+                    borderRadius: '12px',
+                    background: 'rgba(255, 255, 255, 0.08)'
+                  }}>
+                    {icon}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.2rem' }}>
+                      <span className={`badge ${isDanger ? 'badge-danger' : isWarning ? 'badge-warning' : isSuccess ? 'badge-success' : 'badge-info'}`} style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em' }}>
+                        OFFICIAL ADMIN BROADCAST
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Priority Alert
+                      </span>
+                    </div>
+                    <h2 style={{
+                      margin: 0,
+                      fontSize: '1.35rem',
+                      fontWeight: 800,
+                      color: accentColor,
+                      lineHeight: 1.3
+                    }}>
+                      {broadcastNotice.title}
+                    </h2>
+                  </div>
+                </div>
+
+                {/* Body Content */}
+                <div style={{
+                  padding: '1.75rem',
+                  maxHeight: '55vh',
+                  overflowY: 'auto'
+                }}>
+                  <p style={{
+                    fontSize: '1.05rem',
+                    lineHeight: 1.65,
+                    color: 'var(--text-primary)',
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    fontWeight: 500
+                  }}>
+                    {broadcastNotice.message}
+                  </p>
+
+                  <div style={{
+                    marginTop: '1.5rem',
+                    padding: '0.85rem 1rem',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <span>🔒</span>
+                    <span>Console actions are paused until you acknowledge this mandatory notice.</span>
+                  </div>
+                </div>
+
+                {/* Footer Action */}
+                <div style={{
+                  padding: '1.25rem 1.75rem',
+                  borderTop: '1px solid var(--border-color)',
+                  background: 'rgba(0, 0, 0, 0.15)',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                  gap: '1rem'
+                }}>
+                  <button
+                    onClick={handleAcknowledge}
+                    className="btn btn-primary"
+                    style={{
+                      background: accentColor,
+                      borderColor: accentColor,
+                      padding: '0.75rem 2rem',
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      borderRadius: '10px',
+                      color: '#ffffff',
+                      boxShadow: `0 4px 14px ${accentColor}66`
+                    }}
+                  >
+                    I Understand &amp; Acknowledge →
+                  </button>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={() => setDismissedNotice(true)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '1.1rem',
-                padding: '0.2rem 0.4rem',
-                lineHeight: 1
-              }}
-              title="Dismiss for this session"
-            >
-              ✕
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Tab Views */}
         {activeTab === 'overview' && (

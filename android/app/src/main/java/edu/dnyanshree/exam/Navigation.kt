@@ -17,7 +17,31 @@ import edu.dnyanshree.exam.ui.common.ForceUpdateDialog
 
 @Composable
 fun MainNavigation() {
-    var isAuthenticated by remember { mutableStateOf(com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var isAuthenticated by remember {
+        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            val prefs = context.getSharedPreferences("auth_prefs", android.content.Context.MODE_PRIVATE)
+            val lastLoginTime = prefs.getLong("last_login_time", 0L)
+            // Session expires after 3 days (3 * 24 * 60 * 60 * 1000 ms)
+            val maxSessionDuration = 3L * 24L * 60L * 60L * 1000L
+            val now = System.currentTimeMillis()
+            if (lastLoginTime == 0L || (now - lastLoginTime) > maxSessionDuration) {
+                try {
+                    auth.signOut()
+                    prefs.edit().remove("last_login_time").apply()
+                } catch (_: Exception) {}
+                mutableStateOf(false)
+            } else {
+                // Refresh activity timestamp on launch
+                prefs.edit().putLong("last_login_time", now).apply()
+                mutableStateOf(true)
+            }
+        } else {
+            mutableStateOf(false)
+        }
+    }
 
     // App Update Monitoring
     var updateInfo by remember { mutableStateOf<AppVersionInfo?>(null) }

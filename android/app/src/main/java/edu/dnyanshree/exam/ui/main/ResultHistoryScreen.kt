@@ -74,17 +74,31 @@ fun ResultHistoryScreen(onBack: () -> Unit) {
                 } catch (e: Exception) { null }
 
                 if (paperDoc != null && paperDoc.exists()) {
-                    val title = paperDoc.getString("title") ?: "Unknown Title"
+                    val paperTitle = paperDoc.getString("title") ?: "Unknown Title"
                     val subject = paperDoc.getString("subject") ?: "Unknown Subject"
                     val department = paperDoc.getString("department") ?: ""
                     val semester = paperDoc.getString("semester") ?: ""
                     val paperPassPct = paperDoc.getDouble("passingPercentage") ?: paperDoc.getLong("passingPercentage")?.toDouble() ?: 40.0
                     val finalPassPct = attemptPassPct ?: paperPassPct
 
+                    val examId = paperDoc.getString("examId") ?: ""
+                    var examName = ""
+                    if (examId.isNotEmpty()) {
+                        try {
+                            val examDoc = firestore.collection("exams").document(examId).get().await()
+                            if (examDoc.exists()) {
+                                examName = examDoc.getString("name") ?: ""
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    // Display exam name if available, otherwise fallback to paper title
+                    val displayTitle = if (examName.isNotBlank()) examName else paperTitle
+
                     fetchedResults.add(
                         ResultItem(
                             attemptId = doc.id,
-                            title = title,
+                            title = displayTitle,
                             subject = subject,
                             department = department,
                             semester = semester,

@@ -23,7 +23,9 @@ export function AppProvider({ children }) {
     'Electrical & Computer Engineering',
     'Electronics & Telecommunication Engineering',
     'Mechanical & Mechatronics Engineering',
-    'Applied Science & Engineering'
+    'Applied Science & Engineering',
+    'Civil Engineering',
+    'Civil & Environmental Engineering'
   ];
 
   const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS);

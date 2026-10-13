@@ -60,6 +60,7 @@ private val BackgroundGradient = Brush.verticalGradient(listOf(SurfaceLight, Col
 
 @Composable
 fun AuthScreen(onAuthSuccess: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isLogin by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -72,6 +73,8 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         "Electrical & Computer Engineering",
         "Electronics & Telecommunication Engineering",
         "Mechanical & Mechatronics Engineering",
+        "Civil Engineering",
+        "Civil & Environmental Engineering",
         "Applied Science & Engineering"
     )
     var departments by remember { mutableStateOf(defaultDepartments) }
@@ -331,11 +334,17 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             )
                             StyledTextField(
                                 value = prn,
-                                onValueChange = { prn = it.uppercase() },
-                                label = "PRN Number / Roll No.",
-                                placeholder = "e.g. 210101001",
+                                onValueChange = { input ->
+                                    // Restrict to digits only, maximum 16 digits
+                                    val digitsOnly = input.filter { it.isDigit() }
+                                    if (digitsOnly.length <= 16) {
+                                        prn = digitsOnly
+                                    }
+                                },
+                                label = "PRN Number",
+                                placeholder = "e.g. 24067971242514",
                                 icon = Icons.Default.Person,
-                                keyboardType = KeyboardType.Text
+                                keyboardType = KeyboardType.Number
                             )
                             StyledDropdownField(
                                 value = department,
@@ -382,7 +391,50 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         isPassword = true
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    if (isLogin) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val targetEmail = email.trim()
+                                    if (targetEmail.isEmpty()) {
+                                        errorMsg = "Please enter your college email above first."
+                                        successMsg = ""
+                                        return@TextButton
+                                    }
+                                    loading = true
+                                    errorMsg = ""
+                                    successMsg = ""
+                                    com.google.firebase.auth.FirebaseAuth.getInstance()
+                                        .sendPasswordResetEmail(targetEmail)
+                                        .addOnSuccessListener {
+                                            loading = false
+                                            successMsg = "Password reset link sent to $targetEmail. Please check your inbox and spam folder."
+                                            errorMsg = ""
+                                        }
+                                        .addOnFailureListener { ex ->
+                                            loading = false
+                                            errorMsg = ex.message ?: "Failed to send reset email."
+                                            successMsg = ""
+                                        }
+                                },
+                                enabled = !loading
+                            ) {
+                                Text(
+                                    text = "Forgot Password?",
+                                    color = Indigo500,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // === Primary Action Button ===
                     Box(
@@ -393,7 +445,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             .background(if (!loading) PrimaryGradient else Brush.linearGradient(listOf(Gray300, Gray300)))
                             .clickable(enabled = !loading) {
                                 if (isLogin) {
-                                    handleLogin(email, password, coroutineScope,
+                                    handleLogin(context, email, password, coroutineScope,
                                         onSuccess = onAuthSuccess,
                                         onError = { 
                                             errorMsg = it 
@@ -501,6 +553,7 @@ private suspend fun makeApiRequest(endpoint: String, method: String, jsonBody: S
 
 // Auth Flow Trigger Actions
 private fun handleLogin(
+    context: android.content.Context,
     email: String, password: String, scope: CoroutineScope,
     onSuccess: () -> Unit, onError: (String) -> Unit, onLoading: (Boolean) -> Unit,
     onEmailUnverified: (Boolean) -> Unit = {}
@@ -576,6 +629,8 @@ private fun handleLogin(
                                     }
                                 
                                 scope.launch {
+                                    val prefs = context.getSharedPreferences("auth_prefs", android.content.Context.MODE_PRIVATE)
+                                    prefs.edit().putLong("last_login_time", System.currentTimeMillis()).apply()
                                     onLoading(false)
                                     onSuccess()
                                 }
@@ -616,10 +671,10 @@ private fun handleRegisterStart(
                 return@launch
             }
 
-            val cleanPrn = prn.trim().uppercase()
-            if (cleanPrn.isBlank()) {
+            val cleanPrn = prn.trim()
+            if (cleanPrn.length !in 12..16 || !cleanPrn.all { it.isDigit() }) {
                 onLoading(false)
-                onError("Please enter a valid PRN number.")
+                onError("Please enter your valid university PRN Number (12 to 16 digits, typically 14 digits, e.g. 24067971242514). Class roll numbers are not permitted.")
                 return@launch
             }
 

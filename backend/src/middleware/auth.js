@@ -70,6 +70,9 @@ const verifyToken = async (req, res, next) => {
     const userDoc = await db.collection('users').doc(decodedToken.uid).get();
     if (userDoc.exists) {
       const data = userDoc.data();
+      if (data.suspended) {
+        return res.status(403).json({ error: 'Forbidden: Your account has been suspended by the administrator. Contact your exam coordinator.' });
+      }
       const rawRole = (data.role || '').toLowerCase();
       req.user.role = (rawRole === 'teacher' || rawRole === 'admin' || rawRole === 'superadmin' || rawRole === 'faculty') 
         ? rawRole 

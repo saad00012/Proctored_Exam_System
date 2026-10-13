@@ -21,6 +21,13 @@ class MainActivity : ComponentActivity() {
     // Globally enforce screenshot and screen recording blocking, which also thwarts Assistant screenshots (Circle to Search)
     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
+    // Request notification permission on Android 13+ (Tiramisu)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+      }
+    }
+
     enableEdgeToEdge()
     setContent {
       DnyanshreeExamAppTheme { Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { MainNavigation() } }

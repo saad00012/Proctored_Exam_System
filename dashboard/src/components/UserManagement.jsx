@@ -9,7 +9,19 @@ import { parseApiResponse } from '../utils/api';
 // ── Compact ⋮ action menu for table rows ────────────────────────────────────
 function ActionMenu({ actions }) {
   const [open, setOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const ref = useRef(null);
+  const buttonRef = useRef(null);
+
+  const toggleOpen = (e) => {
+    e.stopPropagation();
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUpward(spaceBelow < 250 && rect.top > 250);
+    }
+    setOpen(prev => !prev);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -19,63 +31,65 @@ function ActionMenu({ actions }) {
   }, [open]);
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        ref={buttonRef}
+        onClick={toggleOpen}
         style={{
-          background: 'transparent',
-          border: '1px solid var(--border-color)',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          padding: '0.3rem 0.55rem',
-          fontSize: '1rem',
-          color: 'var(--text-secondary)',
+          background: "transparent",
+          border: "1px solid var(--border-color)",
+          borderRadius: "6px",
+          cursor: "pointer",
+          padding: "0.3rem 0.55rem",
+          fontSize: "1rem",
+          color: "var(--text-secondary)",
           lineHeight: 1,
-          transition: 'background 0.15s'
+          transition: "background 0.15s"
         }}
         title="Actions"
       >
-        ⋮
+        ?
       </button>
       {open && (
         <div style={{
-          position: 'absolute',
+          position: "absolute",
           right: 0,
-          top: 'calc(100% + 4px)',
-          background: 'var(--bg-card, #1e293b)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '10px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-          minWidth: '170px',
-          zIndex: 200,
-          overflow: 'hidden'
+          ...(openUpward ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }),
+          background: "#ffffff",
+          border: "1px solid rgba(0, 0, 0, 0.12)",
+          borderRadius: "10px",
+          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+          minWidth: "185px",
+          zIndex: 9999,
+          overflow: "hidden"
         }}>
-          {actions.map((action, i) => action === 'divider' ? (
-            <div key={i} style={{ height: '1px', background: 'var(--border-color)', margin: '3px 0' }} />
+          {actions.map((action, i) => action === "divider" ? (
+            <div key={i} style={{ height: "1px", background: "rgba(0, 0, 0, 0.08)", margin: "3px 0" }} />
           ) : (
             <button
               key={i}
               onClick={(e) => { e.stopPropagation(); setOpen(false); action.onClick(); }}
               disabled={action.disabled}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                width: '100%',
-                padding: '0.55rem 1rem',
-                background: 'transparent',
-                border: 'none',
-                cursor: action.disabled ? 'not-allowed' : 'pointer',
-                fontSize: '0.82rem',
-                color: action.danger ? '#f87171' : action.success ? '#34d399' : 'var(--text-primary)',
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                width: "100%",
+                padding: "0.6rem 1rem",
+                background: "transparent",
+                border: "none",
+                cursor: action.disabled ? "not-allowed" : "pointer",
+                fontSize: "0.84rem",
+                fontWeight: 500,
+                color: action.danger ? "#dc2626" : action.success ? "#059669" : "#1e293b",
                 opacity: action.disabled ? 0.5 : 1,
-                textAlign: 'left',
-                transition: 'background 0.12s'
+                textAlign: "left",
+                transition: "background 0.12s"
               }}
-              onMouseEnter={e => { if (!action.disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => { if (!action.disabled) e.currentTarget.style.background = "#f1f5f9"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
             >
-              <span style={{ fontSize: '0.9rem', width: '18px', textAlign: 'center' }}>{action.icon}</span>
+              <span style={{ fontSize: "0.95rem", width: "20px", textAlign: "center" }}>{action.icon}</span>
               {action.label}
             </button>
           ))}
@@ -646,7 +660,7 @@ function UserManagement({ user }) {
       {loading ? (
         <p>Loading database directory...</p>
       ) : (
-        <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="glass-card" style={{ padding: 0, overflow: 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ background: 'rgba(255, 255, 255, 0.05)', borderBottom: '1px solid var(--border-color)' }}>

@@ -234,9 +234,45 @@ function Login({ onLoginSuccess }) {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-              Password
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                Password
+              </label>
+              {isLogin && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!email.trim()) {
+                      setError('Please enter your college email above first, then click Forgot Password.');
+                      return;
+                    }
+                    setLoading(true);
+                    setError('');
+                    try {
+                      const { sendPasswordResetEmail } = await import('firebase/auth');
+                      await sendPasswordResetEmail(auth, email.trim());
+                      alert(`Password reset link sent! Check your inbox for ${email.trim()}.`);
+                    } catch (err) {
+                      setError(err.message || 'Failed to send password reset email.');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    padding: 0,
+                    textDecoration: 'underline'
+                  }}
+                  disabled={loading}
+                >
+                  Forgot Password?
+                </button>
+              )}
+            </div>
             <input
               type="password"
               className="input-field"
@@ -271,20 +307,48 @@ function Login({ onLoginSuccess }) {
           >
             {isLogin ? 'Create an account' : 'Already have an account? Sign In'}
           </button>
-          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px dashed var(--border-color)', textAlign: 'center' }}>
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-color)' }}>
             <a
               href="/download"
               style={{
-                display: 'inline-flex',
+                display: 'flex',
                 alignItems: 'center',
-                gap: '0.4rem',
-                color: 'var(--primary)',
-                fontWeight: 600,
-                fontSize: '0.86rem',
-                textDecoration: 'none'
+                justifyContent: 'space-between',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(99, 102, 241, 0.04))',
+                border: '1px solid rgba(79, 70, 229, 0.2)',
+                textDecoration: 'none',
+                color: 'var(--text-primary)',
+                transition: 'all 0.2s ease'
               }}
             >
-              <span>📲</span> Looking for the Student App? <strong>Download APK Here</strong> →
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textAlign: 'left' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'rgba(79, 70, 229, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.2rem',
+                  flexShrink: 0
+                }}>
+                  📱
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary)' }}>
+                    Student Mobile App
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                    Download Latest APK (v3.0)
+                  </div>
+                </div>
+              </div>
+              <span style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 'bold' }}>
+                ↓
+              </span>
             </a>
           </div>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', textAlign: 'center' }}>

@@ -49,7 +49,6 @@ router.post('/start-exam', verifyToken, async (req, res) => {
       return res.status(500).json({ error: 'Database connection is required to start an exam.' });
     }
 
-    /* TEMPORARILY DISABLED FOR SCHEDULED EXAMS
     // 0. Hard Server-Side Version Gate for Students
     if (req.user.role === 'student') {
       try {
@@ -76,7 +75,6 @@ router.post('/start-exam', verifyToken, async (req, res) => {
       }
     }
 
-    */
     // 1. Fetch Paper details
     const paperDoc = await db.collection('papers').doc(paperId).get();
     if (!paperDoc.exists) {
@@ -801,6 +799,7 @@ router.get('/student/results', verifyToken, async (req, res) => {
       let subject = 'Unknown Subject';
       let department = attempt.department || 'Unassigned';
       let semester = attempt.semester || 'N/A';
+      let passingPercentage = 40;
       
       const paperDoc = await db.collection('papers').doc(attempt.paperId).get();
       if (paperDoc.exists) {
@@ -810,6 +809,15 @@ router.get('/student/results', verifyToken, async (req, res) => {
         if (paperData.department) department = paperData.department;
         if (paperData.semester) semester = paperData.semester;
         if (Number(paperData.passingPercentage) > 0) passingPercentage = Number(paperData.passingPercentage);
+
+        if (paperData.examId) {
+          try {
+            const examDoc = await db.collection('exams').doc(paperData.examId).get();
+            if (examDoc.exists && examDoc.data().name) {
+              paperTitle = examDoc.data().name;
+            }
+          } catch (e) {}
+        }
       }
       
       let score = 0;
