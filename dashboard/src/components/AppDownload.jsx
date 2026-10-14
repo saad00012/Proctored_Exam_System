@@ -10,13 +10,29 @@ function AppDownload() {
   // Default known version catalogue (fallback / history)
   const defaultVersions = [
     {
+      versionCode: 4,
+      versionName: 'v4.0 (Latest)',
+      fileName: '4.apk',
+      downloadUrl: '/apps/4.apk',
+      size: '24.7 MB',
+      date: '14 Oct 2026',
+      status: 'recommended',
+      notes: [
+        'Strict PRN numeric validation during student registration',
+        '30-minute idle session timeout with countdown warning',
+        'Large blocking broadcast announcement popup for faculty console',
+        'Pre-exam instructions & rules acknowledgment before exam entry',
+        'Self-healing departmental synchronization'
+      ]
+    },
+    {
       versionCode: 3,
-      versionName: 'v3.0 (Latest)',
+      versionName: 'v3.0',
       fileName: '3.apk',
       downloadUrl: '/apps/3.apk',
       size: '23.6 MB',
       date: '06 Oct 2026',
-      status: 'recommended',
+      status: 'stable',
       notes: [
         'Added per-question customizable marking & grading system',
         'Configurable exam passing percentage threshold',
