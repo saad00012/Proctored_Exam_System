@@ -88,9 +88,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     val list = snapshot.get("list") as? List<*>
                     val strList = list?.filterIsInstance<String>()
                     if (!strList.isNullOrEmpty()) {
-                        departments = strList
-                        if (!strList.contains(department)) {
-                            department = strList.first()
+                        val merged = (strList + defaultDepartments).distinct()
+                        departments = merged
+                        if (!merged.contains(department)) {
+                            department = merged.first()
                         }
                     }
                 }

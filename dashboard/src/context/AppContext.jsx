@@ -111,7 +111,20 @@ export function AppProvider({ children }) {
       if (snap.exists()) {
         const data = snap.data();
         if (Array.isArray(data.list) && data.list.length > 0) {
-          setDepartments(data.list);
+          const missingDefaults = DEFAULT_DEPARTMENTS.filter(
+            d => !data.list.some(existing => existing.trim().toLowerCase() === d.trim().toLowerCase())
+          );
+          if (missingDefaults.length > 0) {
+            const mergedList = [...data.list, ...missingDefaults];
+            setDepartments(mergedList);
+            setDoc(deptDocRef, {
+              list: mergedList,
+              updatedAt: new Date().toISOString(),
+              updatedBy: 'system-auto-merge'
+            }, { merge: true }).catch(err => console.warn('Auto-merge departments error:', err));
+          } else {
+            setDepartments(data.list);
+          }
         }
       } else {
         // Initialize with default list if not yet present in database
