@@ -69,12 +69,13 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var phone by remember { mutableStateOf("") }
     val defaultDepartments = listOf(
         "AI & DS Engineering",
-        "Computer Science & Engineering",
-        "Electrical & Computer Engineering",
-        "Electronics & Telecommunication Engineering",
-        "Mechanical & Mechatronics Engineering",
         "Civil Engineering",
         "Civil & Environmental Engineering",
+        "Computer Science & Engineering",
+        "Electrical Engineering",
+        "Electronics & Telecommunication Engineering",
+        "Mechanical Engineering",
+        "Mechanical & Mechatronics Engineering",
         "Applied Science & Engineering"
     )
     var departments by remember { mutableStateOf(defaultDepartments) }

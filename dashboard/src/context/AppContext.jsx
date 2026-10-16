@@ -19,13 +19,14 @@ export function AppProvider({ children }) {
   const [exams, setExams] = useState([]);
   const DEFAULT_DEPARTMENTS = [
     'AI & DS Engineering',
-    'Computer Science & Engineering',
-    'Electrical & Computer Engineering',
-    'Electronics & Telecommunication Engineering',
-    'Mechanical & Mechatronics Engineering',
-    'Applied Science & Engineering',
     'Civil Engineering',
-    'Civil & Environmental Engineering'
+    'Civil & Environmental Engineering',
+    'Computer Science & Engineering',
+    'Electrical Engineering',
+    'Electronics & Telecommunication Engineering',
+    'Mechanical Engineering',
+    'Mechanical & Mechatronics Engineering',
+    'Applied Science & Engineering'
   ];
 
   const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS);
