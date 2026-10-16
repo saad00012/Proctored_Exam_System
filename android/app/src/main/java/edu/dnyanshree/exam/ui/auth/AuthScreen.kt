@@ -73,6 +73,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         "Civil & Environmental Engineering",
         "Computer Science & Engineering",
         "Electrical Engineering",
+        "Electrical & Computer Engineering",
         "Electronics & Telecommunication Engineering",
         "Mechanical Engineering",
         "Mechanical & Mechatronics Engineering",

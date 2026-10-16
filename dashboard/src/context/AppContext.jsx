@@ -23,6 +23,7 @@ export function AppProvider({ children }) {
     'Civil & Environmental Engineering',
     'Computer Science & Engineering',
     'Electrical Engineering',
+    'Electrical & Computer Engineering',
     'Electronics & Telecommunication Engineering',
     'Mechanical Engineering',
     'Mechanical & Mechatronics Engineering',
@@ -112,15 +113,11 @@ export function AppProvider({ children }) {
       if (snap.exists()) {
         const data = snap.data();
         if (Array.isArray(data.list) && data.list.length > 0) {
-          const cleanExisting = data.list.filter(
-            d => d !== 'Electrical & Computer Engineering'
-          );
           const missingDefaults = DEFAULT_DEPARTMENTS.filter(
-            d => !cleanExisting.some(existing => existing.trim().toLowerCase() === d.trim().toLowerCase())
+            d => !data.list.some(existing => existing.trim().toLowerCase() === d.trim().toLowerCase())
           );
-          const hasDeprecated = cleanExisting.length !== data.list.length;
-          if (missingDefaults.length > 0 || hasDeprecated) {
-            const mergedList = [...cleanExisting, ...missingDefaults];
+          if (missingDefaults.length > 0) {
+            const mergedList = [...data.list, ...missingDefaults];
             setDepartments(mergedList);
             setDoc(deptDocRef, {
               list: mergedList,
