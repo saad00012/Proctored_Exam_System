@@ -112,11 +112,15 @@ export function AppProvider({ children }) {
       if (snap.exists()) {
         const data = snap.data();
         if (Array.isArray(data.list) && data.list.length > 0) {
-          const missingDefaults = DEFAULT_DEPARTMENTS.filter(
-            d => !data.list.some(existing => existing.trim().toLowerCase() === d.trim().toLowerCase())
+          const cleanExisting = data.list.filter(
+            d => d !== 'Electrical & Computer Engineering'
           );
-          if (missingDefaults.length > 0) {
-            const mergedList = [...data.list, ...missingDefaults];
+          const missingDefaults = DEFAULT_DEPARTMENTS.filter(
+            d => !cleanExisting.some(existing => existing.trim().toLowerCase() === d.trim().toLowerCase())
+          );
+          const hasDeprecated = cleanExisting.length !== data.list.length;
+          if (missingDefaults.length > 0 || hasDeprecated) {
+            const mergedList = [...cleanExisting, ...missingDefaults];
             setDepartments(mergedList);
             setDoc(deptDocRef, {
               list: mergedList,
