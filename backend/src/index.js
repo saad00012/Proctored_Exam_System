@@ -61,9 +61,10 @@ const generalLimiter = rateLimit({
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 120,
+  max: 1500,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skip: (req) => req.path === '/broadcast-notice' || req.path === '/app-version'
 });
 
 app.use(generalLimiter);

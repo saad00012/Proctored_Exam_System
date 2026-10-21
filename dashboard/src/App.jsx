@@ -84,7 +84,7 @@ function App() {
       }
     };
     fetchBroadcastNotice();
-    const interval = setInterval(fetchBroadcastNotice, 15000); // 15s refresh for quick delivery
+    const interval = setInterval(fetchBroadcastNotice, 300000); // 5 min interval to protect API rate limit
     return () => clearInterval(interval);
   }, []);
 
