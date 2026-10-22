@@ -54,7 +54,17 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => {
     // Exam routes require individual Firebase Auth tokens; do not rate-limit by IP
-    const examPaths = ['/start-exam', '/auto-submit', '/report-violation', '/submit-answer', '/student/results', '/heartbeat', '/papers'];
+    const examPaths = [
+      '/start-exam',
+      '/auto-submit',
+      '/sync-batch-answers',
+      '/report-violation',
+      '/submit-answer',
+      '/student/results',
+      '/heartbeat',
+      '/papers',
+      '/ping'
+    ];
     return examPaths.some(path => req.path.startsWith(path));
   }
 });

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { collection, doc, getDoc, setDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
@@ -285,14 +285,15 @@ export function AppProvider({ children }) {
       setExams(list);
     }, (err) => console.error('Error syncing exams in AppContext:', err));
 
-    // 5. Questions
-    const unsubQuestions = onSnapshot(collection(db, 'questions'), (snapshot) => {
+    // 5. Questions - one-time fetch on login rather than continuous streaming listener
+    // Questions are static during active exams; this saves ~500,000 redundant document reads
+    getDocs(collection(db, 'questions')).then((snapshot) => {
       const list = [];
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setQuestions(list);
-    }, (err) => console.error('Error syncing questions in AppContext:', err));
+    }).catch((err) => console.error('Error fetching questions in AppContext:', err));
 
     // 6. Whitelisted Domains
     const unsubDomains = onSnapshot(collection(db, 'allowed_domains'), (snapshot) => {
@@ -310,7 +311,6 @@ export function AppProvider({ children }) {
       unsubAttempts();
       unsubPapers();
       unsubExams();
-      unsubQuestions();
       unsubDomains();
     };
   }, [user]);

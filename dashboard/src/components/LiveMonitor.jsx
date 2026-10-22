@@ -1,14 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import React, { useState, useMemo } from 'react';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import API_BASE_URL from '../config';
 import { parseApiResponse } from '../utils/api';
+import { useApp } from '../context/AppContext';
 
 function LiveMonitor({ user, defaultDuration = 45 }) {
-  const [attempts, setAttempts] = useState([]);
-  const [papers, setPapers] = useState([]);
-  const [questions, setQuestions] = useState([]);
-  const [usersMap, setUsersMap] = useState({});
+  const { attempts = [], papers = [], questions = [], students = [], teachers = [] } = useApp() || {};
+
+  // Map users (students & teachers) for display without querying Firestore twice
+  const usersMap = useMemo(() => {
+    const uMap = {};
+    students.forEach((s) => {
+      uMap[s.id || s.uid] = s;
+    });
+    teachers.forEach((t) => {
+      uMap[t.id || t.uid] = t;
+    });
+    return uMap;
+  }, [students, teachers]);
+
   const [selectedAttempt, setSelectedAttempt] = useState(null);
   const [loading, setLoading] = useState(false);
   const [reviewingAttempt, setReviewingAttempt] = useState(null);
@@ -18,64 +29,6 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
   const [selectedDepartment, setSelectedDepartment] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [expandedStudentId, setExpandedStudentId] = useState(null);
-
-  // Fetch attempts, papers, questions, and users
-  useEffect(() => {
-    setLoading(true);
-
-    // Sync users list to map student profiles & PRN numbers
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const uMap = {};
-      snapshot.forEach((doc) => {
-        uMap[doc.id] = { id: doc.id, ...doc.data() };
-      });
-      setUsersMap(uMap);
-    }, (error) => {
-      console.error("Error syncing users in LiveMonitor.jsx:", error);
-    });
-
-    // Sync papers list
-    const unsubPapers = onSnapshot(collection(db, 'papers'), (snapshot) => {
-      const pList = [];
-      snapshot.forEach((doc) => {
-        pList.push({ id: doc.id, ...doc.data() });
-      });
-      setPapers(pList);
-    }, (error) => {
-      console.error("Error syncing papers in LiveMonitor.jsx:", error);
-    });
-
-    // Sync questions list
-    const unsubQuestions = onSnapshot(collection(db, 'questions'), (snapshot) => {
-      const qList = [];
-      snapshot.forEach((doc) => {
-        qList.push({ id: doc.id, ...doc.data() });
-      });
-      setQuestions(qList);
-    }, (error) => {
-      console.error("Error syncing questions in LiveMonitor.jsx:", error);
-    });
-
-    // Sync attempts list
-    const unsubAttempts = onSnapshot(collection(db, 'exam_attempts'), (snapshot) => {
-      const aList = [];
-      snapshot.forEach((doc) => {
-        aList.push({ id: doc.id, ...doc.data() });
-      });
-      setAttempts(aList);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error syncing attempts in LiveMonitor.jsx:", error);
-      setLoading(false);
-    });
-
-    return () => {
-      unsubUsers();
-      unsubPapers();
-      unsubQuestions();
-      unsubAttempts();
-    };
-  }, [user]);
 
   const handleGrantAccess = async (attempt) => {
     setLoading(true);

@@ -92,6 +92,101 @@ router.patch('/users/:uid/verify-email', verifyToken, async (req, res) => {
   }
 });
 
+// Clear unusual activity / security lockouts for a student - ADMIN or FACULTY for department students
+router.post('/users/:uid/clear-unusual-activity', verifyToken, async (req, res) => {
+  try {
+    const { uid } = req.params;
+
+    const targetDoc = await db.collection('users').doc(uid).get();
+    if (!targetDoc.exists) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const targetData = targetDoc.data();
+
+    if (!canManageUser(req.user, targetData)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to modify this user.' });
+    }
+
+    // 1. Unsuspend and mark verified in Firestore
+    await db.collection('users').doc(uid).update({
+      suspended: false,
+      suspendedAt: null,
+      emailVerified: true,
+      lastUnblockedAt: new Date().toISOString(),
+      unblockedBy: req.user.email || req.user.name || 'Admin'
+    });
+
+    // 2. Clear Firebase Auth lockouts and enable the account
+    try {
+      await admin.auth().updateUser(uid, {
+        disabled: false,
+        emailVerified: true
+      });
+      // Revoke any tainted session tokens so client can obtain a fresh unblocked token
+      await admin.auth().revokeRefreshTokens(uid);
+    } catch (authErr) {
+      console.warn(`Could not update Firebase Auth status for ${uid}:`, authErr.message);
+    }
+
+    // 3. Reset any blocked / failed attempt in Firestore to allow student back into the exam
+    const attemptsSnap = await db.collection('exam_attempts')
+      .where('studentId', '==', uid)
+      .get();
+
+    const batch = db.batch();
+    let unblockedAttemptsCount = 0;
+
+    attemptsSnap.forEach(attDoc => {
+      const att = attDoc.data();
+      if (['blocked_pending_review', 'malpractice_failed', 'exited_on_violation'].includes(att.status)) {
+        batch.update(attDoc.ref, {
+          status: 'started',
+          warnings: 0,
+          startedAt: new Date().toISOString(),
+          lastUnblockedAt: new Date().toISOString()
+        });
+        unblockedAttemptsCount++;
+      } else if (att.status === 'started' && (att.warnings || 0) > 0) {
+        // Clear warning count back to 0
+        batch.update(attDoc.ref, {
+          warnings: 0
+        });
+      }
+    });
+
+    // 4. Clear all proctoring violation logs for this student
+    const violSnap = await db.collection('violations')
+      .where('studentId', '==', uid)
+      .get();
+    violSnap.forEach(vDoc => batch.delete(vDoc.ref));
+
+    await batch.commit();
+
+    // 5. Record action in audit logs
+    try {
+      await db.collection('audit_logs').add({
+        timestamp: new Date().toISOString(),
+        action: 'clear_student_lockout',
+        teacherEmail: req.user.email || 'Admin',
+        teacherName: req.user.name || 'Faculty',
+        studentId: uid,
+        studentName: targetData.name || '',
+        details: `Cleared unusual activity, unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
+      });
+    } catch (_) {}
+
+    console.log(`[Admin/Faculty] Cleared unusual activity and locks for student ${uid} (${targetData.name})`);
+    res.json({
+      success: true,
+      uid,
+      message: `Cleared security locks, unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
+    });
+  } catch (error) {
+    console.error('Error clearing unusual activity:', error);
+    res.status(500).json({ error: 'Failed to clear student security lockouts: ' + error.message });
+  }
+});
+
 // Delete a user entirely (Auth + Firestore) - ADMIN or FACULTY for department students
 router.delete('/users/:uid', verifyToken, async (req, res) => {
   try {

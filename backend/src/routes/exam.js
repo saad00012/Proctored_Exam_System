@@ -620,13 +620,45 @@ router.post('/heartbeat', verifyToken, async (req, res) => {
         ...(pendingSyncCount !== undefined ? { pendingSyncCount } : {})
       };
 
-      if (finalRemainingSeconds <= 0) {
+      // Grace period (300s / 5 mins): Allow the student's mobile app countdown to hit 0
+      // and cleanly invoke submitExam() with local answer flushing, rather than cutting them off abruptly.
+      const HEARTBEAT_GRACE_SECONDS = 300;
+
+      if (finalRemainingSeconds <= -HEARTBEAT_GRACE_SECONDS) {
+        // Calculate score from answers so forced submission is never recorded with 0/undefined
+        let score = 0;
+        let totalMarks = 0;
+        let totalQuestions = 0;
+
+        try {
+          const qSnap = await db.collection('questions').where('paperId', '==', paperId).get();
+          const studentAnswers = attempt.answers || {};
+          totalQuestions = qSnap.size;
+
+          qSnap.forEach(qDoc => {
+            const q = qDoc.data();
+            const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+            totalMarks += qMarks;
+            const ans = studentAnswers[qDoc.id];
+            if (ans !== undefined && ans === q.correctOptionIndex) {
+              score += qMarks;
+            }
+          });
+          score = Math.round((score + Number.EPSILON) * 100) / 100;
+          totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
+        } catch (calcErr) {
+          console.error(`Failed to calculate score during heartbeat auto-submit for ${attemptId}:`, calcErr.message);
+        }
+
         transaction.update(attemptRef, {
           ...telemetryUpdate,
           status: 'submitted',
           elapsedTime: (attempt.elapsedTime || 0) + currentLimit,
           overrideTimeSeconds: 0,
-          submittedAt: new Date().toISOString()
+          submittedAt: new Date().toISOString(),
+          score,
+          totalMarks,
+          totalQuestions
         });
         returnStatus = 'submitted';
         returnRemaining = 0;
@@ -635,10 +667,10 @@ router.post('/heartbeat', verifyToken, async (req, res) => {
           ...telemetryUpdate,
           startedAt: new Date().toISOString(),
           elapsedTime: (attempt.elapsedTime || 0) + sessionElapsed,
-          overrideTimeSeconds: finalRemainingSeconds
+          overrideTimeSeconds: Math.max(0, finalRemainingSeconds)
         });
         returnStatus = 'started';
-        returnRemaining = finalRemainingSeconds;
+        returnRemaining = Math.max(0, finalRemainingSeconds);
       }
     });
 

@@ -169,6 +169,24 @@ function UserManagement({ user }) {
     }
   };
 
+  const handleClearUnusualActivity = async (targetUser) => {
+    if (!window.confirm(`Clear unusual activity and security lockouts for ${targetUser.name || targetUser.email}?\n\nThis will:\n1. Unban & verify their login account\n2. Clear Firebase Auth lockouts\n3. Unblock all blocked exam attempts\n4. Reset warning count to 0`)) return;
+    setActionLoading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/admin/users/${targetUser.uid || targetUser.id}/clear-unusual-activity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const data = await parseApiResponse(res);
+      showToast(`✅ ${data.message || 'Security lockouts cleared successfully!'}`, 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'danger');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState(isSuperAdmin ? 'All' : (availableDepts[0] || 'All'));
@@ -750,6 +768,7 @@ function UserManagement({ user }) {
                       </td>
                       <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                         <ActionMenu actions={[
+                          { icon: '🔓', label: 'Clear Lockout / Unusual Activity', onClick: () => handleClearUnusualActivity(s), disabled: actionLoading, success: true },
                           { icon: s.emailVerified ? '✉️' : '✅', label: s.emailVerified ? 'Revoke Verification' : 'Verify Email', onClick: () => handleToggleVerifyEmail(s), disabled: actionLoading, success: !s.emailVerified },
                           { icon: '✏️', label: 'Edit', onClick: () => setEditUser(s) },
                           { icon: s.suspended ? '✓' : '⊘', label: s.suspended ? 'Unsuspend' : 'Suspend', onClick: () => handleToggleSuspend(s), disabled: actionLoading },

@@ -17,30 +17,68 @@ function startSweepService(intervalMs = 30000) {
       const batch = db.batch();
       let count = 0;
 
-      activeAttemptsSnapshot.forEach(doc => {
+      for (const doc of activeAttemptsSnapshot.docs) {
         const attempt = doc.data();
-        if ((attempt.warnings || 0) >= 3) return; // Skip sessions with warnings exceeding threshold
+        if ((attempt.warnings || 0) >= 3) continue; // Skip sessions with warnings exceeding threshold
 
         const startedAt = new Date(attempt.startedAt).getTime();
         const now = Date.now();
         const sessionElapsed = Math.round((now - startedAt) / 1000);
-        const remaining = (attempt.overrideTimeSeconds || 2700) - sessionElapsed;
+        const limitSeconds = (attempt.overrideTimeSeconds || 2700);
+        const remaining = limitSeconds - sessionElapsed;
 
-        if (remaining <= 0) {
-          const finalElapsedTime = (attempt.elapsedTime || 0) + (attempt.overrideTimeSeconds || 2700);
+        // 10-minute (600s) grace period: never cut off students prematurely due to server/network latency
+        const GRACE_PERIOD_SECONDS = 600;
+
+        // Also check if student is still actively heartbeating (within last 5 minutes)
+        const lastHeartbeatTime = attempt.lastHeartbeatAt ? new Date(attempt.lastHeartbeatAt).getTime() : 0;
+        const isHeartbeatingActive = lastHeartbeatTime > 0 && (now - lastHeartbeatTime < 300000);
+
+        if (remaining <= -GRACE_PERIOD_SECONDS && !isHeartbeatingActive) {
+          const finalElapsedTime = (attempt.elapsedTime || 0) + limitSeconds;
+
+          // Calculate score from answers so expired exams are never left with 0/undefined
+          let score = 0;
+          let totalMarks = 0;
+          let totalQuestions = 0;
+
+          try {
+            const paperId = attempt.paperId;
+            const qSnap = await db.collection('questions').where('paperId', '==', paperId).get();
+            const studentAnswers = attempt.answers || {};
+            totalQuestions = qSnap.size;
+
+            qSnap.forEach(qDoc => {
+              const q = qDoc.data();
+              const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
+              totalMarks += qMarks;
+              const ans = studentAnswers[qDoc.id];
+              if (ans !== undefined && ans === q.correctOptionIndex) {
+                score += qMarks;
+              }
+            });
+            score = Math.round((score + Number.EPSILON) * 100) / 100;
+            totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
+          } catch (calcErr) {
+            console.error(`Failed to calculate score during sweep for ${doc.id}:`, calcErr.message);
+          }
+
           batch.update(doc.ref, {
             status: 'submitted',
             elapsedTime: finalElapsedTime,
             overrideTimeSeconds: 0,
-            submittedAt: new Date().toISOString()
+            submittedAt: new Date().toISOString(),
+            score,
+            totalMarks,
+            totalQuestions
           });
           count++;
         }
-      });
+      }
 
       if (count > 0) {
         await batch.commit();
-        console.log(`✅ [Auto-Sweep] Auto-submitted ${count} expired exam sessions.`);
+        console.log(`✅ [Auto-Sweep] Auto-submitted and graded ${count} expired exam sessions.`);
       }
     } catch (err) {
       console.error('❌ Error during active exam sweep:', err.message);
