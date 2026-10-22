@@ -170,16 +170,31 @@ function UserManagement({ user }) {
   };
 
   const handleClearUnusualActivity = async (targetUser) => {
-    if (!window.confirm(`Clear unusual activity and security lockouts for ${targetUser.name || targetUser.email}?\n\nThis will:\n1. Unban & verify their login account\n2. Clear Firebase Auth lockouts\n3. Unblock all blocked exam attempts\n4. Reset warning count to 0`)) return;
+    const confirmed = window.confirm(
+      `Clear unusual activity and unlock ${targetUser.name || targetUser.email}?\n\n` +
+      `This will:\n` +
+      `1. Reset password to "Student@12345"\n` +
+      `2. Bypass Google's temporary email lock\n` +
+      `3. Unblock all active exam sessions\n` +
+      `4. Reset proctoring warnings to 0`
+    );
+    if (!confirmed) return;
     setActionLoading(true);
     try {
       const token = await getAuthToken();
       const res = await fetch(`${API_BASE_URL}/admin/users/${targetUser.uid || targetUser.id}/clear-unusual-activity`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ useAlias: true, newPassword: 'Student@12345' })
       });
       const data = await parseApiResponse(res);
-      showToast(`✅ ${data.message || 'Security lockouts cleared successfully!'}`, 'success');
+      window.alert(
+        `✅ STUDENT UNLOCKED SUCCESSFULLY!\n\n` +
+        `Student Name: ${targetUser.name}\n` +
+        `Login Email: ${data.loginEmail}\n` +
+        `Password: ${data.password}\n\n` +
+        `Please hand these credentials to the student. They can now log in immediately!`
+      );
     } catch (err) {
       showToast('Error: ' + err.message, 'danger');
     } finally {

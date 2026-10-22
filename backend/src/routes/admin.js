@@ -107,20 +107,40 @@ router.post('/users/:uid/clear-unusual-activity', verifyToken, async (req, res) 
       return res.status(403).json({ error: 'Forbidden: You do not have permission to modify this user.' });
     }
 
+    const tempPassword = req.body.newPassword || 'Student@12345';
+    let finalLoginEmail = targetData.email;
+
+    // Check if alias bypass requested (for students whose email string is rate-limited by Google)
+    if (req.body.useAlias || req.body.bypassEmailLock) {
+      const nameParts = (targetData.name || 'Student').trim().split(/\s+/);
+      const middleInitial = nameParts.length > 2 ? nameParts[1][0].toLowerCase() + '.' : '1.';
+      const emailPrefix = targetData.email.split('@')[0];
+      const domain = targetData.email.split('@')[1] || 'dnyanshree.edu.in';
+      if (!emailPrefix.includes('.' + middleInitial)) {
+        finalLoginEmail = `${emailPrefix.split('.')[0]}.${middleInitial}${emailPrefix.split('.')[1] || 'exam'}@${domain}`;
+      } else {
+        finalLoginEmail = `${emailPrefix}.1@${domain}`;
+      }
+    }
+
     // 1. Unsuspend and mark verified in Firestore
     await db.collection('users').doc(uid).update({
       suspended: false,
       suspendedAt: null,
       emailVerified: true,
+      email: finalLoginEmail,
       lastUnblockedAt: new Date().toISOString(),
-      unblockedBy: req.user.email || req.user.name || 'Admin'
+      unblockedBy: req.user.email || req.user.name || 'Admin',
+      ...(finalLoginEmail !== targetData.email ? { originalEmail: targetData.email } : {})
     });
 
-    // 2. Clear Firebase Auth lockouts and enable the account
+    // 2. Clear Firebase Auth lockouts, set password, and enable the account
     try {
       await admin.auth().updateUser(uid, {
         disabled: false,
-        emailVerified: true
+        emailVerified: true,
+        email: finalLoginEmail,
+        password: tempPassword
       });
       // Revoke any tainted session tokens so client can obtain a fresh unblocked token
       await admin.auth().revokeRefreshTokens(uid);
@@ -171,15 +191,17 @@ router.post('/users/:uid/clear-unusual-activity', verifyToken, async (req, res) 
         teacherName: req.user.name || 'Faculty',
         studentId: uid,
         studentName: targetData.name || '',
-        details: `Cleared unusual activity, unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
+        details: `Cleared unusual activity (loginEmail: ${finalLoginEmail}), unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
       });
     } catch (_) {}
 
-    console.log(`[Admin/Faculty] Cleared unusual activity and locks for student ${uid} (${targetData.name})`);
+    console.log(`[Admin/Faculty] Cleared unusual activity and locks for student ${uid} (${targetData.name}) -> Login: ${finalLoginEmail}`);
     res.json({
       success: true,
       uid,
-      message: `Cleared security locks, unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
+      loginEmail: finalLoginEmail,
+      password: tempPassword,
+      message: `Cleared security locks! Student can now log in using Email: "${finalLoginEmail}" and Password: "${tempPassword}".`
     });
   } catch (error) {
     console.error('Error clearing unusual activity:', error);
