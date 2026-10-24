@@ -60,6 +60,10 @@ const parseScheduleDate = (dateStr) => {
 // Start an exam session and send FCM to relevant students
 router.patch('/papers/:id/start', verifyToken, async (req, res) => {
   try {
+    if (req.user && req.user.role === 'student') {
+      return res.status(403).json({ error: 'Forbidden: Students cannot start exam sessions.' });
+    }
+
     const paperId = req.params.id;
     const { isExam, otp } = req.body;
     
@@ -114,11 +118,14 @@ router.patch('/papers/:id/start', verifyToken, async (req, res) => {
       const { admin } = require('../firebase'); 
       const paper = docData; 
       // Get all students in the department
-      const studentsSnap = await db.collection('users')
+      let studentsQuery = db.collection('users')
         .where('role', '==', 'student')
-        .where('department', '==', paper.department)
-        .where('semester', '==', paper.semester || 'Semester 7')
-        .get();
+        .where('department', '==', paper.department);
+
+      if (paper.semester && paper.semester !== 'All' && paper.semester !== 'N/A') {
+        studentsQuery = studentsQuery.where('semester', '==', paper.semester);
+      }
+      const studentsSnap = await studentsQuery.get();
       
       const tokens = [];
       studentsSnap.forEach(s => { if (s.data().fcmToken) tokens.push(s.data().fcmToken); });

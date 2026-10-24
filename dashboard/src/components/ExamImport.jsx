@@ -5,6 +5,136 @@ import { useApp } from '../context/AppContext';
 
 const SET_NAMES = ['Set A', 'Set B', 'Set C', 'Set D'];
 
+export const TIME_SLOTS = [];
+for (let h = 7; h <= 20; h++) {
+  for (let m = 0; m < 60; m += 15) {
+    if (h === 20 && m > 0) break;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    const hh = String(h12).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    TIME_SLOTS.push(`${hh}:${mm} ${ampm}`);
+  }
+}
+
+export const generateDateSlots = () => {
+  const dates = [];
+  const start = new Date();
+  start.setDate(start.getDate() - 15); // Start 15 days ago
+  for (let i = 0; i < 180; i++) { // Next ~6 months of academic dates
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
+  }
+  return dates;
+};
+export const DATE_SLOTS = generateDateSlots();
+
+export function getTodayDateStr() {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function splitScheduleDateTime(dtStr) {
+  const todayStr = getTodayDateStr();
+  if (!dtStr) return { date: todayStr, time: '10:00 AM' };
+  try {
+    const s = String(dtStr).trim();
+    if (s.includes('T') || s.includes(' ')) {
+      const parts = s.split(/[T ]/);
+      const dPart = parts[0];
+      const tPart = (parts[1] || '10:00').substring(0, 5);
+      const [hStr, mStr] = tPart.split(':');
+      let h = parseInt(hStr, 10);
+      if (isNaN(h)) h = 10;
+      const mm = mStr || '00';
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return { date: dPart || todayStr, time: `${String(h12).padStart(2, '0')}:${mm} ${ampm}` };
+    }
+    return { date: s || todayStr, time: '10:00 AM' };
+  } catch {
+    return { date: dtStr || todayStr, time: '10:00 AM' };
+  }
+}
+
+export function parseScheduleDateTime(valB, valC) {
+  if (valB == null && valC == null) return '';
+
+  let dateStr = '';
+  let timeStr = '';
+
+  // 1. Process Date from valB
+  if (valB instanceof Date && !isNaN(valB.getTime())) {
+    const y = valB.getFullYear();
+    const m = String(valB.getMonth() + 1).padStart(2, '0');
+    const d = String(valB.getDate()).padStart(2, '0');
+    dateStr = `${y}-${m}-${d}`;
+    const hh = String(valB.getHours()).padStart(2, '0');
+    const mm = String(valB.getMinutes()).padStart(2, '0');
+    if (valB.getHours() !== 0 || valB.getMinutes() !== 0) {
+      timeStr = `${hh}:${mm}`;
+    }
+  } else if (typeof valB === 'number' && valB > 30000 && valB < 60000) {
+    // Excel date serial number (e.g. 45589 for Oct 2026)
+    const excelDate = new Date(Math.round((valB - 25569) * 86400 * 1000));
+    if (!isNaN(excelDate.getTime())) {
+      const y = excelDate.getFullYear();
+      const m = String(excelDate.getMonth() + 1).padStart(2, '0');
+      const d = String(excelDate.getDate()).padStart(2, '0');
+      dateStr = `${y}-${m}-${d}`;
+    }
+  } else if (valB != null) {
+    let s = String(valB).trim();
+    // Strip weekday if present, e.g. "2026-10-24 (Sat)" -> "2026-10-24"
+    s = s.replace(/\s*\([^)]*\)/, '').trim();
+    if (s.includes('T') || s.includes(' ')) {
+      const parts = s.split(/[T ]/);
+      if (parts.length >= 2) {
+        dateStr = parts[0].trim();
+        timeStr = parts[1].trim();
+      } else {
+        dateStr = s;
+      }
+    } else {
+      dateStr = s;
+    }
+  }
+
+  // 2. Process Time from valC if selected
+  if (valC != null && String(valC).trim()) {
+    const rawTime = String(valC).trim();
+    const match12 = rawTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (match12) {
+      let h = parseInt(match12[1], 10);
+      const m = match12[2];
+      const ampm = (match12[3] || '').toUpperCase();
+      if (ampm === 'PM' && h < 12) h += 12;
+      if (ampm === 'AM' && h === 12) h = 0;
+      timeStr = `${String(h).padStart(2, '0')}:${m}`;
+    } else if (/^\d{1,2}:\d{2}$/.test(rawTime)) {
+      timeStr = rawTime;
+    }
+  }
+
+  if (!dateStr) return '';
+  if (!timeStr) timeStr = '00:00';
+
+  // Normalize DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD if needed
+  if (/^\d{1,2}[/-]\d{1,2}[/-]\d{4}$/.test(dateStr)) {
+    const parts = dateStr.split(/[/-]/);
+    dateStr = `${parts[2]}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`;
+  }
+
+  return `${dateStr} ${timeStr}`;
+}
+
 function ExamImport({ user, onClose, onImported }) {
   const { departments = [] } = useApp();
   const [step, setStep] = useState(1);
@@ -21,19 +151,19 @@ function ExamImport({ user, onClose, onImported }) {
       wb.creator = 'Proctored Exam System';
 
       const info = wb.addWorksheet('Exam Info');
-      info.columns = [{ width: 36 }, { width: 48 }];
+      info.columns = [{ width: 36 }, { width: 30 }, { width: 30 }];
 
-      const r1 = info.addRow(['EXAM CONFIGURATION — Fill Column B only', '']);
+      const r1 = info.addRow(['EXAM CONFIGURATION — Fill Columns B & C', '', '']);
       r1.height = 26;
-      ['A1', 'B1'].forEach(addr => {
+      ['A1', 'B1', 'C1'].forEach(addr => {
         const c = info.getCell(addr);
         c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
         c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
         c.alignment = { vertical: 'middle' };
       });
 
-      const r2 = info.addRow(['Yellow cells are editable. Do NOT rename sheets.', '']);
-      ['A2','B2'].forEach(addr => {
+      const r2 = info.addRow(['Yellow cells are editable. Pick Date (Col B dropdown) & Time (Col C dropdown).', '', '']);
+      ['A2','B2','C2'].forEach(addr => {
         info.getCell(addr).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
       });
       r2.getCell(1).font = { italic: true, color: { argb: 'FF888888' }, size: 10 };
@@ -41,9 +171,10 @@ function ExamImport({ user, onClose, onImported }) {
       const LABEL_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
       const INPUT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
       const INPUT_BORDER = { bottom: { style: 'medium', color: { argb: 'FFBFBFBF' } } };
+      const HINT_FONT = { italic: true, color: { argb: 'FF94A3B8' }, size: 9 };
 
-      const addInfoRow = (label) => {
-        const r = info.addRow([label, '']);
+      const addInfoRow = (label, valB = '', hintC = '', isInputC = false) => {
+        const r = info.addRow([label, valB, hintC]);
         r.height = 22;
         r.getCell(1).font = { bold: true };
         r.getCell(1).fill = LABEL_FILL;
@@ -51,28 +182,75 @@ function ExamImport({ user, onClose, onImported }) {
         r.getCell(2).fill = INPUT_FILL;
         r.getCell(2).border = INPUT_BORDER;
         r.getCell(2).alignment = { vertical: 'middle' };
+
+        if (isInputC) {
+          r.getCell(3).fill = INPUT_FILL;
+          r.getCell(3).border = INPUT_BORDER;
+          r.getCell(3).alignment = { vertical: 'middle' };
+        } else {
+          r.getCell(3).font = HINT_FONT;
+          r.getCell(3).alignment = { vertical: 'middle' };
+        }
       };
 
-      addInfoRow('Exam Name *');
-      addInfoRow('Subject / Course *');
-      addInfoRow('Department * (select from dropdown)');
-      addInfoRow('Semester * (select from dropdown)');
-      addInfoRow('Duration (minutes) *');
-      addInfoRow('Schedule Start (YYYY-MM-DD HH:MM) *');
-      addInfoRow('Schedule End   (YYYY-MM-DD HH:MM) *');
-      addInfoRow('Total Questions Per Set *');
-      addInfoRow('Passing Percentage % (e.g. 40)');
+      const defaultDateStr = getTodayDateStr();
+      addInfoRow('Exam Name *', '', '(e.g. Unit 1 Examination)');
+      addInfoRow('Subject / Course *', '', '(e.g. Blockchain Technology)');
+      addInfoRow('Department * (select from dropdown)', '', '(Select from dropdown)');
+      addInfoRow('Semester * (select from dropdown)', '', '(Select from dropdown)');
+      addInfoRow('Duration (minutes) *', '45', '(Minutes, e.g. 45 or 60)');
+      addInfoRow('Schedule Start Date * (Col B=Date, Col C=Time)', defaultDateStr, '10:00 AM', true);
+      addInfoRow('Schedule End Date   * (Col B=Date, Col C=Time)', defaultDateStr, '11:00 AM', true);
+      addInfoRow('Total Questions Per Set *', '25', '(e.g. 25 or 30 questions)');
+      addInfoRow('Passing Percentage % (e.g. 40)', '40', '(Minimum % to pass)');
 
-      const deptValidationFormula = '"' + (departments.length > 0 ? departments.join(',') : 'Computer Science & Engineering') + '"';
+      // Reference sheet for dropdown lists (Excel strips inline list formulas longer than 255 chars, so a reference sheet is required)
+      const listsSheet = wb.addWorksheet('Lists');
+      listsSheet.state = 'hidden';
+
+      const deptList = (departments && departments.length > 0) ? departments : [
+        'AI & DS Engineering',
+        'Civil Engineering',
+        'Civil & Environmental Engineering',
+        'Computer Science & Engineering',
+        'Electrical Engineering',
+        'Electrical & Computer Engineering',
+        'Electronics & Telecommunication Engineering',
+        'Mechanical Engineering',
+        'Mechanical & Mechatronics Engineering',
+        'Applied Science & Engineering'
+      ];
+      deptList.forEach((d, idx) => {
+        listsSheet.getCell(`A${idx + 1}`).value = d;
+      });
+
+      const semList = [
+        'Semester 1', 'Semester 2', 'Semester 3', 'Semester 4',
+        'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8'
+      ];
+      semList.forEach((s, idx) => {
+        listsSheet.getCell(`B${idx + 1}`).value = s;
+      });
+
+      // Time list: 07:00 AM to 08:00 PM every 15 mins
+      TIME_SLOTS.forEach((t, idx) => {
+        listsSheet.getCell(`C${idx + 1}`).value = t;
+      });
+
+      // Date list: Next 6 months of dates
+      DATE_SLOTS.forEach((d, idx) => {
+        listsSheet.getCell(`D${idx + 1}`).value = d;
+      });
+
       info.getCell('B5').dataValidation = {
         type: 'list', allowBlank: false,
-        formulae: [deptValidationFormula],
+        formulae: [`Lists!$A$1:$A$${deptList.length}`],
         showErrorMessage: true, errorStyle: 'stop',
         errorTitle: 'Invalid Department', error: 'Please select a department from the dropdown.'
       };
       info.getCell('B6').dataValidation = {
         type: 'list', allowBlank: false,
-        formulae: ['"Semester 1,Semester 2,Semester 3,Semester 4,Semester 5,Semester 6,Semester 7,Semester 8"'],
+        formulae: [`Lists!$B$1:$B$${semList.length}`],
         showErrorMessage: true, errorStyle: 'stop',
         errorTitle: 'Invalid Semester', error: 'Please select a semester from the dropdown.'
       };
@@ -81,6 +259,31 @@ function ExamImport({ user, onClose, onImported }) {
         showErrorMessage: true, errorStyle: 'stop',
         errorTitle: 'Invalid Duration', error: 'Enter a positive whole number (e.g. 45).'
       };
+
+      // Date dropdown validations for B8 & B9 (displays dropdown arrow in Excel Desktop, Web & Google Sheets)
+      const dateValidation = {
+        type: 'list',
+        allowBlank: false,
+        formulae: [`Lists!$D$1:$D$${DATE_SLOTS.length}`],
+        showInputMessage: true,
+        promptTitle: '📅 Select Exam Date',
+        prompt: 'Click the dropdown arrow to pick a date (YYYY-MM-DD), or type directly.',
+        showErrorMessage: false, // allows typing any custom date as well
+      };
+      info.getCell('B8').dataValidation = dateValidation;
+      info.getCell('B9').dataValidation = dateValidation;
+
+      // Time dropdown validations for C8 & C9 (15-min increments from 07:00 AM to 08:00 PM)
+      const timeValidation = {
+        type: 'list',
+        allowBlank: false,
+        formulae: [`Lists!$C$1:$C$${TIME_SLOTS.length}`],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Time', error: 'Please select a time from the dropdown.'
+      };
+      info.getCell('C8').dataValidation = timeValidation;
+      info.getCell('C9').dataValidation = timeValidation;
+
       info.getCell('B10').dataValidation = {
         type: 'whole', operator: 'between', formulae: [1, 200],
         showErrorMessage: true, errorStyle: 'stop',
@@ -153,9 +356,13 @@ function ExamImport({ user, onClose, onImported }) {
         setLoading(false); return;
       }
 
-      const cell = (row) => { const v = infoSheet.getCell('B' + row).value; return v == null ? '' : String(v).trim(); };
+      const cellVal = (col, row) => infoSheet.getCell(col + row).value;
+      const cell = (row) => { const v = cellVal('B', row); return v == null ? '' : String(v).trim(); };
       const examName = cell(3), subject = cell(4), department = cell(5), semester = cell(6);
-      const durationRaw = cell(7), scheduleStart = cell(8), scheduleEnd = cell(9), totalQRaw = cell(10), passPctRaw = cell(11);
+      const durationRaw = cell(7);
+      const scheduleStart = parseScheduleDateTime(cellVal('B', 8), cellVal('C', 8));
+      const scheduleEnd = parseScheduleDateTime(cellVal('B', 9), cellVal('C', 9));
+      const totalQRaw = cell(10), passPctRaw = cell(11);
 
       if (!examName) errs.push('Exam Name is required (Exam Info B3).');
       if (!subject) errs.push('Subject / Course is required (Exam Info B4).');
@@ -165,8 +372,8 @@ function ExamImport({ user, onClose, onImported }) {
       const durationMinutes = parseInt(durationRaw);
       if (!durationRaw || isNaN(durationMinutes) || durationMinutes < 1)
         errs.push('Duration must be a positive number (Exam Info B7).');
-      if (!scheduleStart) errs.push('Schedule Start is required (Exam Info B8).');
-      if (!scheduleEnd) errs.push('Schedule End is required (Exam Info B9).');
+      if (!scheduleStart) errs.push('Schedule Start is required (Exam Info B8/C8). Please select a date and time.');
+      if (!scheduleEnd) errs.push('Schedule End is required (Exam Info B9/C9). Please select a date and time.');
       const totalQPerSet = parseInt(totalQRaw);
       if (!totalQRaw || isNaN(totalQPerSet) || totalQPerSet < 1)
         errs.push('Total Questions Per Set must be a positive number (Exam Info B10).');
@@ -223,9 +430,22 @@ function ExamImport({ user, onClose, onImported }) {
     if (!parsedData) return;
     setLoading(true); setErrors([]);
     try {
+      let finalSubject = parsedData.subject || '';
+      if (parsedData.examName && parsedData.subject) {
+        const normExam = parsedData.examName.trim().toLowerCase();
+        const normSubj = parsedData.subject.trim().toLowerCase();
+        if (normExam !== normSubj) {
+          if (normExam.includes(normSubj)) {
+            finalSubject = parsedData.examName.trim();
+          } else {
+            finalSubject = `${parsedData.subject.trim()} - ${parsedData.examName.trim()}`;
+          }
+        }
+      }
+
       const examRef = await addDoc(collection(db, 'exams'), {
         name: parsedData.examName,
-        subject: parsedData.subject,
+        subject: finalSubject,
         department: parsedData.department || user?.department || 'Computer Science & Engineering',
         semester: parsedData.semester || 'Semester 7',
         durationMinutes: parsedData.durationMinutes,
@@ -245,7 +465,7 @@ function ExamImport({ user, onClose, onImported }) {
         const paperRef = await addDoc(collection(db, 'papers'), {
           title: setName,
           examId: examRef.id,
-          subject: parsedData.subject,
+          subject: finalSubject,
           department: parsedData.department || user?.department || 'Computer Science & Engineering',
           semester: parsedData.semester || 'Semester 7',
           durationMinutes: parsedData.durationMinutes,
@@ -296,7 +516,7 @@ function ExamImport({ user, onClose, onImported }) {
             <div style={{ background:'rgba(99,102,241,0.08)', borderRadius:'10px', padding:'1.25rem', marginBottom:'1.5rem', border:'1px solid rgba(99,102,241,0.2)' }}>
               <p style={{ fontWeight:600, marginBottom:'0.5rem' }}>Step 1 — Download the Template</p>
               <p style={{ fontSize:'0.85rem', color:'var(--text-secondary)', marginBottom:'1rem' }}>
-                5 sheets: <strong>Exam Info</strong> (with department dropdown + schedule fields) + <strong>Set A, Set B, Set C, Set D</strong>.
+                5 sheets: <strong>Exam Info</strong> (with Department &amp; Semester dropdowns, Date calendar pickers, and Time dropdowns) + <strong>Set A, Set B, Set C, Set D</strong>.
                 Correct-answer column has a 1–4 dropdown. All 4 sets are mandatory.
               </p>
               <button className="btn btn-primary" onClick={handleDownloadTemplate} disabled={loading}>

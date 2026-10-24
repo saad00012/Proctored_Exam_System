@@ -101,7 +101,11 @@ function ActionMenu({ actions }) {
 
 function UserManagement({ user }) {
   const { departments = [] } = useApp();
-  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
+  const isSuperAdmin = user?.role === 'superadmin' || 
+                       user?.role === 'admin' || 
+                       user?.email?.toLowerCase().startsWith('admin') || 
+                       user?.email?.toLowerCase().includes('admin') || 
+                       user?.email === 'yash.chiplunkar@dnyanshree.edu.in';
 
   // Faculty user's allowed departments
   const facultyDepts = Array.isArray(user?.departments) && user.departments.length > 0
@@ -169,14 +173,17 @@ function UserManagement({ user }) {
     }
   };
 
+  const [quickUnblockQuery, setQuickUnblockQuery] = useState('');
+  const [quickUnblockLoading, setQuickUnblockLoading] = useState(false);
+
   const handleClearUnusualActivity = async (targetUser) => {
     const confirmed = window.confirm(
       `Clear unusual activity and unlock ${targetUser.name || targetUser.email}?\n\n` +
       `This will:\n` +
-      `1. Reset password to "Student@12345"\n` +
-      `2. Bypass Google's temporary email lock\n` +
-      `3. Unblock all active exam sessions\n` +
-      `4. Reset proctoring warnings to 0`
+      `1. Restore official institutional email\n` +
+      `2. Reset password to "Student@12345"\n` +
+      `3. Unsuspend and mark account verified\n` +
+      `4. Clear proctoring violations and unblock active exam sessions`
     );
     if (!confirmed) return;
     setActionLoading(true);
@@ -185,7 +192,7 @@ function UserManagement({ user }) {
       const res = await fetch(`${API_BASE_URL}/admin/users/${targetUser.uid || targetUser.id}/clear-unusual-activity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ useAlias: true, newPassword: 'Student@12345' })
+        body: JSON.stringify({ useAlias: false, newPassword: 'Student@12345' })
       });
       const data = await parseApiResponse(res);
       window.alert(
@@ -193,12 +200,49 @@ function UserManagement({ user }) {
         `Student Name: ${targetUser.name}\n` +
         `Login Email: ${data.loginEmail}\n` +
         `Password: ${data.password}\n\n` +
-        `Please hand these credentials to the student. They can now log in immediately!`
+        `⚠️ IMPORTANT FOR "UNUSUAL ACTIVITY":\n` +
+        `If the student's phone still shows "unusual activity", Google Identity Toolkit has temporarily blocked the Campus Wi-Fi IP address.\n\n` +
+        `➡️ FIX: Tell the student to TURN OFF Campus Wi-Fi, TURN ON Mobile Data (4G/5G) or Hotspot, and sign in!\n` +
+        `They will be able to log in immediately with the credentials above.`
       );
     } catch (err) {
       showToast('Error: ' + err.message, 'danger');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleQuickUnblockByQuery = async (e) => {
+    if (e) e.preventDefault();
+    if (!quickUnblockQuery.trim()) {
+      showToast('Please enter a student Email or PRN number', 'danger');
+      return;
+    }
+    setQuickUnblockLoading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/admin/unblock-student-by-query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ query: quickUnblockQuery.trim(), newPassword: 'Student@12345', useAlias: false })
+      });
+      const data = await parseApiResponse(res);
+      window.alert(
+        `✅ STUDENT UNLOCKED SUCCESSFULLY!\n\n` +
+        `Student: ${data.studentName || 'Student'}\n` +
+        `Login Email: ${data.loginEmail}\n` +
+        `Password: ${data.password}\n\n` +
+        `⚠️ IMPORTANT FOR "UNUSUAL ACTIVITY":\n` +
+        `If the student's phone still shows "unusual activity", Google Identity Toolkit has temporarily blocked the Campus Wi-Fi IP address.\n\n` +
+        `➡️ FIX: Tell the student to TURN OFF Campus Wi-Fi, TURN ON Mobile Data (4G/5G) or Hotspot, and sign in!`
+      );
+      setQuickUnblockQuery('');
+      showToast(`Student ${data.studentName || data.loginEmail} unblocked!`, 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'danger');
+      window.alert('Failed to unblock: ' + err.message);
+    } finally {
+      setQuickUnblockLoading(false);
     }
   };
 
@@ -648,6 +692,40 @@ function UserManagement({ user }) {
         </div>
       )}
 
+      {/* Emergency Student Unlock Bar */}
+      {activeTab === 'students' && (
+        <div className="glass-card" style={{ padding: '1rem 1.25rem', marginBottom: '1.25rem', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>⚡</span> Emergency Student Unlock & Password Reset
+              </div>
+              <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Instantly resets password to <strong>Student@12345</strong>, clears proctoring lockouts, and unlocks login.
+              </p>
+            </div>
+            <form onSubmit={handleQuickUnblockByQuery} style={{ display: 'flex', gap: '0.5rem', flex: '1 1 320px', maxWidth: '500px' }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Enter Student Email or PRN (e.g. devyani.karanjkar@...)"
+                value={quickUnblockQuery}
+                onChange={(e) => setQuickUnblockQuery(e.target.value)}
+                style={{ flex: 1, padding: '0.45rem 0.75rem', fontSize: '0.85rem' }}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', background: '#10b981', borderColor: '#10b981', whiteSpace: 'nowrap' }}
+                disabled={quickUnblockLoading}
+              >
+                {quickUnblockLoading ? 'Unblocking...' : '⚡ Quick Unblock'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Filters Card */}
       <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ flex: '1 1 250px' }}>
@@ -781,7 +859,23 @@ function UserManagement({ user }) {
                           {getStudentExamsCount(s.uid)}
                         </span>
                       </td>
-                      <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
+                      <td style={{ padding: '1rem 1.5rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{
+                            padding: '0.25rem 0.55rem',
+                            fontSize: '0.75rem',
+                            marginRight: '0.5rem',
+                            color: '#10b981',
+                            borderColor: 'rgba(16, 185, 129, 0.45)',
+                            background: 'rgba(16, 185, 129, 0.08)'
+                          }}
+                          onClick={() => handleClearUnusualActivity(s)}
+                          disabled={actionLoading}
+                          title="Instant unblock, reset password to Student@12345, and clear proctoring locks"
+                        >
+                          ⚡ Quick Unblock
+                        </button>
                         <ActionMenu actions={[
                           { icon: '🔓', label: 'Clear Lockout / Unusual Activity', onClick: () => handleClearUnusualActivity(s), disabled: actionLoading, success: true },
                           { icon: s.emailVerified ? '✉️' : '✅', label: s.emailVerified ? 'Revoke Verification' : 'Verify Email', onClick: () => handleToggleVerifyEmail(s), disabled: actionLoading, success: !s.emailVerified },

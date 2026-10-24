@@ -3,7 +3,7 @@ import { collection, doc, setDoc, updateDoc, addDoc, query, where, onSnapshot, d
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, auth } from '../firebase';
 import { compressImageToBase64 } from '../utils/imageCompressor';
-import ExamImport from './ExamImport';
+import ExamImport, { TIME_SLOTS, DATE_SLOTS, splitScheduleDateTime, getTodayDateStr } from './ExamImport';
 import QuestionBank from './QuestionBank';
 import { useApp } from '../context/AppContext';
 import API_BASE_URL from '../config';
@@ -349,6 +349,24 @@ function PaperUpload({ user }) {
     };
 
     try {
+      const examRef = await addDoc(collection(db, 'exams'), {
+        name: paperSubject,
+        subject: paperSubject,
+        department: paperDepartment,
+        semester: 'Semester 7',
+        durationMinutes: paperDuration ? parseInt(paperDuration) : 45,
+        scheduleStart: paperScheduleStart || '',
+        scheduleEnd: paperScheduleEnd || '',
+        passingPercentage: 40,
+        status: 'draft',
+        isVisible: false,
+        isHidden: true,
+        createdAt: new Date().toISOString(),
+        createdById: user?.uid || null,
+        createdBy: user?.name || user?.email || 'Teacher',
+        createdByEmail: user?.email || null
+      });
+      paperData.examId = examRef.id;
       await addDoc(collection(db, 'papers'), paperData);
       setPaperTitle('');
       setPaperSubject('');
@@ -715,25 +733,26 @@ function PaperUpload({ user }) {
       const INPUT_BORDER = { bottom: { style: 'medium', color: { argb: 'FFBFBFBF' } } };
 
       const info = wb.addWorksheet('Exam Info');
-      info.columns = [{ width: 36 }, { width: 48 }];
+      info.columns = [{ width: 36 }, { width: 30 }, { width: 30 }];
 
-      const r1 = info.addRow(['EXAM CONFIGURATION — Fill Column B only', '']);
+      const r1 = info.addRow(['EXAM CONFIGURATION — Fill Columns B & C', '', '']);
       r1.height = 26;
-      ['A1', 'B1'].forEach(addr => {
+      ['A1', 'B1', 'C1'].forEach(addr => {
         const c = info.getCell(addr);
         c.fill = HDR_FILL;
         c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
         c.alignment = { vertical: 'middle' };
       });
 
-      const r2 = info.addRow(['Yellow cells are editable. Do NOT rename sheets.', '']);
-      ['A2', 'B2'].forEach(addr => {
+      const r2 = info.addRow(['Yellow cells are editable. Pick Date (Col B) & Time (Col C) for schedule.', '', '']);
+      ['A2', 'B2', 'C2'].forEach(addr => {
         info.getCell(addr).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
       });
       r2.getCell(1).font = { italic: true, color: { argb: 'FF888888' }, size: 10 };
 
-      const addInfoRow = (label, value = '') => {
-        const r = info.addRow([label, value]);
+      const HINT_FONT = { italic: true, color: { argb: 'FF94A3B8' }, size: 9 };
+      const addInfoRow = (label, valB = '', hintC = '', isInputC = false) => {
+        const r = info.addRow([label, valB, hintC]);
         r.height = 22;
         r.getCell(1).font = { bold: true };
         r.getCell(1).fill = LABEL_FILL;
@@ -741,19 +760,120 @@ function PaperUpload({ user }) {
         r.getCell(2).fill = INPUT_FILL;
         r.getCell(2).border = INPUT_BORDER;
         r.getCell(2).alignment = { vertical: 'middle' };
+
+        if (isInputC) {
+          r.getCell(3).fill = INPUT_FILL;
+          r.getCell(3).border = INPUT_BORDER;
+          r.getCell(3).alignment = { vertical: 'middle' };
+        } else {
+          r.getCell(3).font = HINT_FONT;
+          r.getCell(3).alignment = { vertical: 'middle' };
+        }
       };
 
       // Rows 3–11 matching the upload parser: B3=examName, B4=subject, B5=dept, B6=sem, B7=duration, B8=start, B9=end, B10=totalQ, B11=passPct
+      const startSplit = splitScheduleDateTime(exam.scheduleStart);
+      const endSplit = splitScheduleDateTime(exam.scheduleEnd);
       const totalQPerSet = Math.max(...examPapers.map(p => (questionsByPaper[p.id] || []).length), 0);
-      addInfoRow('Exam Name *', exam.name || '');
-      addInfoRow('Subject / Course *', exam.subject || '');
-      addInfoRow('Department * (select from dropdown)', exam.department || '');
-      addInfoRow('Semester * (select from dropdown)', exam.semester || '');
-      addInfoRow('Duration (minutes) *', exam.durationMinutes || '');
-      addInfoRow('Schedule Start (YYYY-MM-DD HH:MM) *', exam.scheduleStart || '');
-      addInfoRow('Schedule End   (YYYY-MM-DD HH:MM) *', exam.scheduleEnd || '');
-      addInfoRow('Total Questions Per Set *', totalQPerSet || '');
-      addInfoRow('Passing Percentage % (e.g. 40)', exam.passingPercentage || 40);
+      addInfoRow('Exam Name *', exam.name || '', '(e.g. Unit 1 Examination)');
+      addInfoRow('Subject / Course *', exam.subject || '', '(e.g. Blockchain Technology)');
+      addInfoRow('Department * (select from dropdown)', exam.department || '', '(Select from dropdown)');
+      addInfoRow('Semester * (select from dropdown)', exam.semester || '', '(Select from dropdown)');
+      addInfoRow('Duration (minutes) *', exam.durationMinutes || '45', '(Minutes, e.g. 45 or 60)');
+      addInfoRow('Schedule Start Date * (Col B=Date, Col C=Time)', startSplit.date || getTodayDateStr(), startSplit.time, true);
+      addInfoRow('Schedule End Date   * (Col B=Date, Col C=Time)', endSplit.date || getTodayDateStr(), endSplit.time, true);
+      addInfoRow('Total Questions Per Set *', totalQPerSet || '25', '(e.g. 25 or 30 questions)');
+      addInfoRow('Passing Percentage % (e.g. 40)', exam.passingPercentage || 40, '(Minimum % to pass)');
+
+      // Reference sheet for dropdown lists (avoids Excel stripping long inline list formulas)
+      const listsSheet = wb.addWorksheet('Lists');
+      listsSheet.state = 'hidden';
+
+      const deptList = (departments && departments.length > 0) ? departments : [
+        'AI & DS Engineering',
+        'Civil Engineering',
+        'Civil & Environmental Engineering',
+        'Computer Science & Engineering',
+        'Electrical Engineering',
+        'Electrical & Computer Engineering',
+        'Electronics & Telecommunication Engineering',
+        'Mechanical Engineering',
+        'Mechanical & Mechatronics Engineering',
+        'Applied Science & Engineering'
+      ];
+      deptList.forEach((d, idx) => {
+        listsSheet.getCell(`A${idx + 1}`).value = d;
+      });
+
+      const semList = [
+        'Semester 1', 'Semester 2', 'Semester 3', 'Semester 4',
+        'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8'
+      ];
+      semList.forEach((s, idx) => {
+        listsSheet.getCell(`B${idx + 1}`).value = s;
+      });
+
+      // Time list: 07:00 AM to 08:00 PM every 15 mins
+      TIME_SLOTS.forEach((t, idx) => {
+        listsSheet.getCell(`C${idx + 1}`).value = t;
+      });
+
+      // Date list: Next 6 months of dates
+      DATE_SLOTS.forEach((d, idx) => {
+        listsSheet.getCell(`D${idx + 1}`).value = d;
+      });
+
+      info.getCell('B5').dataValidation = {
+        type: 'list', allowBlank: false,
+        formulae: [`Lists!$A$1:$A$${deptList.length}`],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Department', error: 'Please select a department from the dropdown.'
+      };
+      info.getCell('B6').dataValidation = {
+        type: 'list', allowBlank: false,
+        formulae: [`Lists!$B$1:$B$${semList.length}`],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Semester', error: 'Please select a semester from the dropdown.'
+      };
+      info.getCell('B7').dataValidation = {
+        type: 'whole', operator: 'greaterThan', formulae: [0],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Duration', error: 'Enter a positive whole number (e.g. 45).'
+      };
+
+      // Date dropdown validation for B8 & B9 (displays dropdown arrow in Excel Desktop, Web & Google Sheets)
+      const dateValidation = {
+        type: 'list',
+        allowBlank: false,
+        formulae: [`Lists!$D$1:$D$${DATE_SLOTS.length}`],
+        showInputMessage: true,
+        promptTitle: '📅 Select Exam Date',
+        prompt: 'Click the dropdown arrow to pick a date (YYYY-MM-DD), or type directly.',
+        showErrorMessage: false,
+      };
+      info.getCell('B8').dataValidation = dateValidation;
+      info.getCell('B9').dataValidation = dateValidation;
+
+      // Time dropdown validations for C8 & C9 (15-min increments from 07:00 AM to 08:00 PM)
+      const timeValidation = {
+        type: 'list',
+        allowBlank: false,
+        formulae: [`Lists!$C$1:$C$${TIME_SLOTS.length}`],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Time', error: 'Please select a time from the dropdown.'
+      };
+      info.getCell('C8').dataValidation = timeValidation;
+      info.getCell('C9').dataValidation = timeValidation;
+      info.getCell('B10').dataValidation = {
+        type: 'whole', operator: 'between', formulae: [1, 200],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Count', error: 'Must be between 1 and 200.'
+      };
+      info.getCell('B11').dataValidation = {
+        type: 'whole', operator: 'between', formulae: [1, 100],
+        showErrorMessage: true, errorStyle: 'stop',
+        errorTitle: 'Invalid Pass %', error: 'Passing percentage must be between 1 and 100.'
+      };
 
       // ── Set A / B / C / D sheets ────────────────────────────────────────────
       const SET_NAMES = ['Set A', 'Set B', 'Set C', 'Set D'];
@@ -934,6 +1054,23 @@ function PaperUpload({ user }) {
   const handleCreateExam = async (e) => {
     e.preventDefault();
     if (!examName || !examSubject || !examDepartment) return;
+
+    const existingConflict = exams.find(ex =>
+      ex.department === examDepartment &&
+      (ex.semester || 'Semester 7') === (examSemester || 'Semester 7') &&
+      ex.subject?.trim().toLowerCase() === examSubject?.trim().toLowerCase()
+    );
+    if (existingConflict) {
+      const confirmProceed = window.confirm(
+        `⚠️ SUBJECT CONFLICT DETECTED:\n\n` +
+        `An exam named "${existingConflict.name}" already uses the exact subject "${examSubject}" in ${examDepartment} (${examSemester}).\n\n` +
+        `The student Android app groups all papers by Subject name into a single exam card. If two exams share the exact same subject, students who finish and submit Unit 1 will be LOCKED OUT of Unit 2 with "Submitted".\n\n` +
+        `To keep exams separate for students, please give this exam a distinct subject (e.g. "${examSubject} - ${examName || 'Unit 2'}").\n\n` +
+        `Click OK to create anyway, or Cancel to edit the subject.`
+      );
+      if (!confirmProceed) return;
+    }
+
     setLoading(true);
     try {
       const passPct = Number(examPassingPercentage) > 0 ? Number(examPassingPercentage) : 40;
@@ -1010,6 +1147,24 @@ function PaperUpload({ user }) {
       alert("Permission Denied: You can only modify exams that you created.");
       return;
     }
+
+    const existingConflict = exams.find(ex =>
+      ex.id !== examId &&
+      ex.department === editExamDepartment &&
+      (ex.semester || 'Semester 7') === (editExamSemester || 'Semester 7') &&
+      ex.subject?.trim().toLowerCase() === editExamSubject?.trim().toLowerCase()
+    );
+    if (existingConflict) {
+      const confirmProceed = window.confirm(
+        `⚠️ SUBJECT CONFLICT DETECTED:\n\n` +
+        `An exam named "${existingConflict.name}" already uses the subject "${editExamSubject}" in ${editExamDepartment} (${editExamSemester}).\n\n` +
+        `The student Android app groups all papers by Subject name into a single exam card. If two exams share the exact same subject, students who finish and submit Unit 1 will be LOCKED OUT of Unit 2 with "Submitted".\n\n` +
+        `To keep exams separate for students, please give this exam a distinct subject (e.g. "${editExamSubject} - ${editExamName || 'Unit 2'}").\n\n` +
+        `Click OK to update anyway, or Cancel to edit the subject.`
+      );
+      if (!confirmProceed) return;
+    }
+
     setLoading(true);
     try {
       const passPct = Number(editExamPassingPercentage) > 0 ? Number(editExamPassingPercentage) : 40;
@@ -1278,6 +1433,24 @@ function PaperUpload({ user }) {
                     <option value="Semester 8">Semester 8</option>
                   </select>
                 </div>
+
+                {examSubject && exams.some(ex =>
+                  ex.department === examDepartment &&
+                  (ex.semester || 'Semester 7') === (examSemester || 'Semester 7') &&
+                  ex.subject?.trim().toLowerCase() === examSubject?.trim().toLowerCase()
+                ) && (
+                  <div style={{ padding: '0.65rem 0.9rem', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', color: '#fca5a5', fontSize: '0.82rem', width: '100%', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span>⚠️ <strong>Subject Conflict:</strong> Another exam in {examDepartment} already has subject "<strong>{examSubject}</strong>". The student app groups papers by Subject; identical subjects will merge into 1 pool and lock students out of Unit 2.</span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                      onClick={() => setExamSubject(prev => `${prev.trim()} - ${examName.trim() || 'Unit 2'}`)}
+                    >
+                      ✨ Differentiate: "{examSubject.trim()} - {examName.trim() || 'Unit 2'}"
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '140px' }}>
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Pass % (Threshold)</label>
@@ -1532,6 +1705,25 @@ function PaperUpload({ user }) {
                           <option value="Semester 8">Semester 8</option>
                         </select>
                       </div>
+
+                      {editExamSubject && exams.some(ex =>
+                        ex.id !== exam.id &&
+                        ex.department === editExamDepartment &&
+                        (ex.semester || 'Semester 7') === (editExamSemester || 'Semester 7') &&
+                        ex.subject?.trim().toLowerCase() === editExamSubject?.trim().toLowerCase()
+                      ) && (
+                        <div style={{ padding: '0.65rem 0.9rem', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', color: '#fca5a5', fontSize: '0.82rem', width: '100%', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <span>⚠️ <strong>Subject Conflict:</strong> Another exam in this department already uses subject "<strong>{editExamSubject}</strong>". Differentiate to prevent student app lockouts.</span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                            onClick={() => setEditExamSubject(prev => `${prev.trim()} - ${editExamName.trim() || 'Unit 2'}`)}
+                          >
+                            ✨ Differentiate: "{editExamSubject.trim()} - {editExamName.trim() || 'Unit 2'}"
+                          </button>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '110px' }}>
                           <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Pass %</label>

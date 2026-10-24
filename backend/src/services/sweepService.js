@@ -63,20 +63,30 @@ function startSweepService(intervalMs = 30000) {
             console.error(`Failed to calculate score during sweep for ${doc.id}:`, calcErr.message);
           }
 
-          batch.update(doc.ref, {
+          const updateData = {
             status: 'submitted',
             elapsedTime: finalElapsedTime,
             overrideTimeSeconds: 0,
-            submittedAt: new Date().toISOString(),
-            score,
-            totalMarks,
-            totalQuestions
-          });
+            submittedAt: new Date().toISOString()
+          };
+
+          if (totalQuestions > 0) {
+            updateData.score = score;
+            updateData.totalMarks = totalMarks;
+            updateData.totalQuestions = totalQuestions;
+          }
+
+          batch.update(doc.ref, updateData);
           count++;
+
+          if (count % 450 === 0) {
+            await batch.commit();
+            batch = db.batch();
+          }
         }
       }
 
-      if (count > 0) {
+      if (count > 0 && count % 450 !== 0) {
         await batch.commit();
         console.log(`✅ [Auto-Sweep] Auto-submitted and graded ${count} expired exam sessions.`);
       }

@@ -201,7 +201,12 @@ export function AppProvider({ children }) {
           console.warn('Could not sync Firestore profile on auth change:', e);
         }
 
-        const isSuperAdmin = userRole === 'superadmin' || userRole === 'admin' || firebaseUser.email?.toLowerCase().startsWith('admin');
+        const emailLower = (firebaseUser.email || '').toLowerCase();
+        const isSuperAdmin = userRole === 'superadmin' || 
+                             userRole === 'admin' || 
+                             emailLower.startsWith('admin') || 
+                             emailLower.includes('admin') || 
+                             emailLower === 'yash.chiplunkar@dnyanshree.edu.in';
         const finalRole = isSuperAdmin ? 'superadmin' : 'teacher';
         setRole(finalRole);
 

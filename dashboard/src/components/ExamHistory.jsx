@@ -109,56 +109,57 @@ function ExamHistory({ user }) {
     );
   }, [exams, isSuperAdmin, user]);
 
-  // Group papers by Subject / Exam (using scopedPapers and scopedExams)
+  // Group papers by Exam ID / Subject so distinct exams never merge into an 8-set pool
   const subjectsMap = new Map();
+
+  // First, initialize distinct exam groups from scopedExams
+  scopedExams.forEach(ex => {
+    const key = ex.id;
+    subjectsMap.set(key, {
+      id: ex.id,
+      name: ex.name || ex.title || ex.subject || 'General Examination',
+      subject: ex.subject || ex.name || 'General Examination',
+      title: ex.name || ex.subject || 'General Examination',
+      department: ex.department || 'Unassigned',
+      semester: ex.semester || 'N/A',
+      durationMinutes: ex.durationMinutes || 45,
+      scheduleStart: ex.scheduleStart || '',
+      scheduleEnd: ex.scheduleEnd || '',
+      createdAt: ex.createdAt || '',
+      passingPercentage: ex.passingPercentage || 40,
+      papers: []
+    });
+  });
 
   // Populate from scoped papers
   scopedPapers.forEach(p => {
-    const subjKey = p.subject || p.title || 'General Examination';
-    if (!subjectsMap.has(subjKey)) {
-      subjectsMap.set(subjKey, {
-        subject: subjKey,
-        title: p.title || subjKey,
+    const examKey = (p.examId && subjectsMap.has(p.examId))
+      ? p.examId
+      : (p.examId || p.id);
+
+    if (!subjectsMap.has(examKey)) {
+      subjectsMap.set(examKey, {
+        id: p.examId || examKey,
+        name: p.examName || p.title || p.subject || 'General Examination',
+        subject: p.subject || p.title || 'General Examination',
+        title: p.title || p.subject || 'General Examination',
         department: p.department || 'Unassigned',
         semester: p.semester || 'N/A',
         durationMinutes: p.durationMinutes || 45,
         scheduleStart: p.scheduleStart || '',
         scheduleEnd: p.scheduleEnd || '',
         createdAt: p.createdAt || '',
+        passingPercentage: p.passingPercentage || 40,
         papers: []
       });
     }
-    const grp = subjectsMap.get(subjKey);
+    const grp = subjectsMap.get(examKey);
     grp.papers.push(p);
+    if (!grp.name && (p.examName || p.title)) grp.name = p.examName || p.title;
     if (!grp.scheduleStart && p.scheduleStart) grp.scheduleStart = p.scheduleStart;
     if (!grp.scheduleEnd && p.scheduleEnd) grp.scheduleEnd = p.scheduleEnd;
     if (p.department && grp.department === 'Unassigned') grp.department = p.department;
     if (p.semester && grp.semester === 'N/A') grp.semester = p.semester;
-  });
-
-  // Also match any configured exam groups from scopedExams
-  scopedExams.forEach(ex => {
-    const subjKey = ex.subject || ex.name || 'General Examination';
-    if (!subjectsMap.has(subjKey)) {
-      subjectsMap.set(subjKey, {
-        subject: subjKey,
-        title: ex.name || subjKey,
-        department: ex.department || 'Unassigned',
-        semester: ex.semester || 'N/A',
-        durationMinutes: ex.durationMinutes || 45,
-        scheduleStart: ex.scheduleStart || '',
-        scheduleEnd: ex.scheduleEnd || '',
-        createdAt: ex.createdAt || '',
-        papers: []
-      });
-    } else {
-      const existing = subjectsMap.get(subjKey);
-      if (ex.name) existing.title = ex.name;
-      if (ex.department) existing.department = ex.department;
-      if (ex.semester) existing.semester = ex.semester;
-      if (ex.scheduleStart) existing.scheduleStart = ex.scheduleStart;
-      if (ex.scheduleEnd) existing.scheduleEnd = ex.scheduleEnd;
-    }
   });
 
   // Aggregate stats per conducted exam (Consolidated 1 row per student)
@@ -213,7 +214,7 @@ function ExamHistory({ user }) {
       const passPct = Number(paperObj?.passingPercentage) > 0 ? Number(paperObj.passingPercentage) : (Number(examGrp.passingPercentage) > 0 ? Number(examGrp.passingPercentage) : 40);
 
       return {
-        id: `${studentId}_${examGrp.subject}`,
+        id: `${studentId}_${examGrp.id || examGrp.subject}`,
         studentId: studentId,
         studentName: primaryAttempt.studentName || studentProfile?.name || 'Student',
         studentEmail: primaryAttempt.studentEmail || studentProfile?.email || 'N/A',
@@ -267,8 +268,9 @@ function ExamHistory({ user }) {
     // Department filter — only applicable for SuperAdmin (teachers can't cross-filter by dept)
     if (isSuperAdmin && selectedDept !== 'All' && exam.department !== selectedDept) return false;
     const matchesSem = selectedSemester === 'All' || exam.semester === selectedSemester;
-    const matchesSearch = exam.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          exam.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (exam.subject && exam.subject.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (exam.title && exam.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (exam.name && exam.name.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSem && matchesSearch;
   });
 
@@ -278,6 +280,7 @@ function ExamHistory({ user }) {
       'PRN',
       'Student Name',
       'Email',
+      'Exam Name',
       'Subject',
       'Paper Set',
       'Score',
@@ -297,6 +300,7 @@ function ExamHistory({ user }) {
         `"${p.prnNumber}"`,
         `"${p.studentName}"`,
         `"${p.studentEmail}"`,
+        `"${exam.name || exam.title || exam.subject || 'Examination'}"`,
         `"${exam.subject}"`,
         `"${p.paperTitle}"`,
         p.score,
@@ -316,7 +320,8 @@ function ExamHistory({ user }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `${exam.subject.replace(/[^a-zA-Z0-9]/g, '_')}_Results.csv`);
+    const safeExamName = (exam.name && exam.name !== exam.subject ? `${exam.subject}_${exam.name}` : (exam.name || exam.subject || 'Exam')).replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('download', `${safeExamName}_Results.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -428,7 +433,8 @@ function ExamHistory({ user }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {filteredExams.map(exam => {
-            const isExpanded = expandedExamId === exam.subject;
+            const examUniqueKey = exam.id || exam.subject;
+            const isExpanded = expandedExamId === examUniqueKey;
             
             // Filter participants within expanded exam
             const filteredParticipants = exam.participants.filter(p => {
@@ -441,13 +447,13 @@ function ExamHistory({ user }) {
             });
 
             return (
-              <div key={exam.subject} className="glass-card" style={{ padding: '1.75rem', overflow: 'hidden' }}>
+              <div key={examUniqueKey} className="glass-card" style={{ padding: '1.75rem', overflow: 'hidden' }}>
                 {/* Exam Card Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem', marginBottom: '1.25rem' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                       <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>
-                        {exam.subject}
+                        {exam.title && exam.title !== exam.subject ? `${exam.title} (${exam.subject})` : exam.subject}
                       </h3>
                       {exam.papers.length > 0 && (
                         <span className="badge badge-info">{exam.papers.length} {exam.papers.length === 1 ? 'Paper Set' : 'Paper Sets'}</span>
@@ -508,7 +514,7 @@ function ExamHistory({ user }) {
                       type="button"
                       className={`btn ${isExpanded ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => {
-                        setExpandedExamId(isExpanded ? null : exam.subject);
+                        setExpandedExamId(isExpanded ? null : examUniqueKey);
                         setStudentSearchQuery('');
                       }}
                       style={{ padding: '0.45rem 1.15rem', fontSize: '0.82rem' }}

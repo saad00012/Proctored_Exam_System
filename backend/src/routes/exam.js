@@ -156,8 +156,8 @@ const parseScheduleDate = (dateStr) => {
       priorAttempts.push({ id: doc.id, ...doc.data() });
     });
 
-    // Batch pre-fetch all paper subjects for prior attempts to eliminate N+1 Firestore queries
-    const paperSubjectMap = {};
+    // Batch pre-fetch all paper metadata for prior attempts to eliminate N+1 Firestore queries
+    const paperMetaMap = {};
     if (priorAttempts.length > 0) {
       const uniquePaperIds = [...new Set(priorAttempts.map(a => a.paperId))];
       const paperDocs = await Promise.all(
@@ -166,18 +166,26 @@ const parseScheduleDate = (dateStr) => {
       paperDocs.forEach(doc => {
         if (doc.exists) {
           const data = doc.data();
-          paperSubjectMap[doc.id] = data.subject || data.title || '';
+          paperMetaMap[doc.id] = {
+            subject: data.subject || data.title || '',
+            examId: data.examId || ''
+          };
         }
       });
     }
 
-    const getSubjectForPaper = (pId) => paperSubjectMap[pId] || '';
+    const matchesExamGroup = (attPaperId) => {
+      const meta = paperMetaMap[attPaperId] || { subject: '', examId: '' };
+      if (paperObj.examId) {
+        return Boolean(meta.examId && meta.examId === paperObj.examId);
+      }
+      return attPaperId === paperId;
+    };
 
-    // Check if user is currently blocked (failed malpractice or blocked pending review in this subject)
+    // Check if user is currently blocked (failed malpractice or blocked pending review in this exam)
     for (const att of priorAttempts) {
       if (att.status === 'blocked_pending_review' || att.status === 'malpractice_failed') {
-        const attSubject = getSubjectForPaper(att.paperId);
-        if (attSubject === paperSubject) {
+        if (matchesExamGroup(att.paperId)) {
           isBlocked = true;
           break;
         }
@@ -188,12 +196,11 @@ const parseScheduleDate = (dateStr) => {
       return res.status(403).json({ error: 'You are blocked from starting exams in this subject due to malpractice infractions.' });
     }
 
-    // Reassignment logic for same-subject soft violation (exited_on_violation)
+    // Reassignment logic for same-exam soft violation (exited_on_violation)
     let hasSameSubjectSoftViolation = false;
     for (const att of priorAttempts) {
       if (att.status === 'exited_on_violation') {
-        const attSubject = getSubjectForPaper(att.paperId);
-        if (attSubject === paperSubject) {
+        if (matchesExamGroup(att.paperId)) {
           hasSameSubjectSoftViolation = true;
           break;
         }
@@ -202,10 +209,10 @@ const parseScheduleDate = (dateStr) => {
 
     if (hasSameSubjectSoftViolation) {
       let candidatePapers = [];
-      const papersSnapshot = await db.collection('papers')
-        .where('subject', '==', paperSubject)
-        .where('status', '==', 'published')
-        .get();
+      const queryRef = paperObj.examId
+        ? db.collection('papers').where('examId', '==', paperObj.examId).where('status', '==', 'published')
+        : db.collection('papers').where('__name__', '==', paperId);
+      const papersSnapshot = await queryRef.get();
       papersSnapshot.forEach(doc => {
         candidatePapers.push({ id: doc.id, ...doc.data() });
       });
@@ -223,17 +230,16 @@ const parseScheduleDate = (dateStr) => {
         console.log(`🔁 No unused papers remaining. Student ${studentId} is resuming current paper ${paperId}.`);
       }
     } else {
-      // First-time attempt for this subject: Randomly assign an unused paper set from published sets if multiple exist
+      // First-time attempt for this exam: Randomly assign an unused paper set from published sets if multiple exist
       const existingSameSubjectAttempt = priorAttempts.find(att => {
-        const attSubject = getSubjectForPaper(att.paperId);
-        return attSubject === paperSubject && att.status === 'started';
+        return matchesExamGroup(att.paperId) && att.status === 'started';
       });
 
       if (!existingSameSubjectAttempt) {
         let candidatePapers = [];
         const queryRef = paperObj.examId
           ? db.collection('papers').where('examId', '==', paperObj.examId).where('status', '==', 'published')
-          : db.collection('papers').where('subject', '==', paperSubject).where('status', '==', 'published');
+          : db.collection('papers').where('__name__', '==', paperId);
         
         const papersSnapshot = await queryRef.get();
         papersSnapshot.forEach(doc => {
@@ -265,14 +271,14 @@ const parseScheduleDate = (dateStr) => {
     let subjectWarningsCount = 0;
 
     for (const att of priorAttempts) {
-      const attSubject = getSubjectForPaper(att.paperId);
+      const isTargetExam = matchesExamGroup(att.paperId);
 
-      if (attSubject === paperSubject) {
+      if (isTargetExam) {
         subjectWarningsCount += att.warnings || 0;
       }
 
       if (att.paperId !== paperId) {
-        if (attSubject === paperSubject) {
+        if (isTargetExam) {
           totalPriorElapsed += att.elapsedTime || 0;
           if (att.status === 'exited_on_violation' && att.overrideTimeSeconds > 0) {
             customOverrideSeconds = Math.max(customOverrideSeconds, att.overrideTimeSeconds);
@@ -320,16 +326,12 @@ const parseScheduleDate = (dateStr) => {
       overrideTimeSeconds: calculatedTimeLeft
     };
 
-    // Terminate any other active/exited attempts for other papers in the same subject pool
+    // Terminate any other active/exited attempts for other papers in the same exam pool
     const batch = db.batch();
     let terminatedCount = 0;
     for (const att of priorAttempts) {
       if (att.paperId !== paperId) {
-        let attSubject = '';
-        const pDoc = await db.collection('papers').doc(att.paperId).get();
-        if (pDoc.exists) attSubject = pDoc.data().subject || pDoc.data().title || '';
-
-        if (attSubject === paperSubject && (att.status === 'started' || att.status === 'exited_on_violation')) {
+        if (matchesExamGroup(att.paperId) && (att.status === 'started' || att.status === 'exited_on_violation')) {
           const oldAttemptRef = db.collection('exam_attempts').doc(att.id);
           const attStartedAt = att.startedAt ? new Date(att.startedAt).getTime() : Date.now();
           const sinceLastStart = att.status === 'started' ? Math.min(15, Math.max(0, Math.round((Date.now() - attStartedAt) / 1000))) : 0;
@@ -737,6 +739,15 @@ router.post('/auto-submit', verifyToken, async (req, res) => {
       });
       score = Math.round((score + Number.EPSILON) * 100) / 100;
       totalMarks = Math.round((totalMarks + Number.EPSILON) * 100) / 100;
+
+      if (attempt.score === undefined || attempt.totalMarks === undefined || attempt.totalQuestions === undefined) {
+        db.collection('exam_attempts').doc(attemptId).update({
+          score,
+          totalMarks,
+          totalQuestions: questionsList.length,
+          passingPercentage
+        }).catch(err => console.warn('Could not backfill score to Firestore:', err.message));
+      }
 
       return res.json({
         message: 'Exam already submitted',

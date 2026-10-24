@@ -362,6 +362,18 @@ p { color: var(--text-secondary); }
   color: white;
 }
 
+.btn-warning {
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--color-warning-text);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #f59e0b;
+  color: white;
+  border-color: #f59e0b;
+}
+
 .btn-sm {
   font-size: 0.8rem;
   padding: 0.4rem 0.9rem;

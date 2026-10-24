@@ -28,6 +28,7 @@ android/build/
 android/local.properties
 *.apk
 *.aab
+*.idsig
 *.keystore
 *.jks
 

@@ -6,7 +6,7 @@ import { parseApiResponse } from '../utils/api';
 import { useApp } from '../context/AppContext';
 
 function LiveMonitor({ user, defaultDuration = 45 }) {
-  const { attempts = [], papers = [], questions = [], students = [], teachers = [] } = useApp() || {};
+  const { attempts = [], papers = [], exams = [], questions = [], students = [], teachers = [] } = useApp() || {};
 
   // Map users (students & teachers) for display without querying Firestore twice
   const usersMap = useMemo(() => {
@@ -28,7 +28,98 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
+  const [selectedExamId, setSelectedExamId] = useState('All');
   const [expandedStudentId, setExpandedStudentId] = useState(null);
+
+  const handleResumeCurrentPaper = async (attempt) => {
+    if (!attempt) return;
+    setLoading(true);
+    try {
+      if (db && attempt.id) {
+        await updateDoc(doc(db, 'exam_attempts', attempt.id), {
+          status: 'started',
+          warnings: 0,
+          lastUnblockedAt: new Date().toISOString()
+        });
+      }
+      if (db && attempt.studentId) {
+        await updateDoc(doc(db, 'users', attempt.studentId), {
+          unusualActivity: false,
+          securityLocked: false,
+          isBlocked: false,
+          loginAttempts: 0
+        }).catch(() => {});
+      }
+      setReviewingAttempt(null);
+      alert(`✅ ${attempt.studentName || 'Student'} has been unlocked on their current exam! They can now continue answering.`);
+    } catch (err) {
+      alert('Failed to resume exam: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickUnblockStudent = async (student) => {
+    const studentUid = student.studentId;
+    const studentName = student.studentName || 'Student';
+    if (!window.confirm(`⚡ Instantly unblock ${studentName}?\n\nThis will:\n1. Clear "Unusual Activity" & security locks\n2. Reset proctoring warnings to 0\n3. Restore exam access so student can resume immediately.`)) {
+      return;
+    }
+    setLoading(true);
+    try {
+      let token = (user && user.token) || '';
+      try {
+        if (auth && auth.currentUser) {
+          token = await auth.currentUser.getIdToken();
+        }
+      } catch (e) {
+        console.warn('Could not get fresh token', e);
+      }
+
+      const res = await fetch(`${API_BASE_URL}/admin/users/${studentUid}/clear-unusual-activity`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ useAlias: false })
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await parseApiResponse(res);
+      alert(`✅ ${studentName} unblocked successfully!\n\n• Login: ${data.loginEmail || student.email || 'Preserved'}\n• Session unblocked: Ready to continue exam.\n• Warnings reset to 0.`);
+    } catch (err) {
+      console.warn('API unblock fallback to direct database reset:', err);
+      try {
+        if (db) {
+          await updateDoc(doc(db, 'users', studentUid), {
+            unusualActivity: false,
+            securityLocked: false,
+            isBlocked: false,
+            loginAttempts: 0
+          });
+          const att = student.latestAttempt;
+          if (att && att.id) {
+            await updateDoc(doc(db, 'exam_attempts', att.id), {
+              status: 'started',
+              warnings: 0,
+              lastUnblockedAt: new Date().toISOString()
+            });
+          }
+          alert(`✅ ${studentName} unblocked via direct database reset.`);
+        } else {
+          throw err;
+        }
+      } catch (innerErr) {
+        alert('Failed to unblock student: ' + (err.message || innerErr.message));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGrantAccess = async (attempt) => {
     setLoading(true);
@@ -327,6 +418,33 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       groups[studentKey].attempts.push(attempt);
     });
 
+    const isSuperAdmin = user?.role === 'superadmin' || 
+                         user?.role === 'admin' || 
+                         user?.email?.toLowerCase().startsWith('admin') || 
+                         user?.email?.toLowerCase().includes('admin') || 
+                         user?.email === 'yash.chiplunkar@dnyanshree.edu.in';
+
+    // Find all paper IDs belonging to the selected exam filter
+    let selectedPaperIds = null;
+    if (selectedExamId !== 'All') {
+      selectedPaperIds = new Set();
+      const childPapers = papers.filter(p => p.examId === selectedExamId);
+      if (childPapers.length > 0) {
+        childPapers.forEach(p => selectedPaperIds.add(p.id));
+      } else {
+        selectedPaperIds.add(selectedExamId);
+      }
+    }
+
+    // Filter available papers for this user
+    const teacherPapers = isSuperAdmin
+      ? papers
+      : papers.filter(p =>
+          (p.createdById && p.createdById === user?.uid) ||
+          (p.createdByEmail && p.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+          (p.createdBy && p.createdBy.toLowerCase() === user?.name?.toLowerCase())
+        );
+
     const studentSummaries = Object.values(groups).map(group => {
       // Sort attempts descending by submission or activity date
       const sortedAttempts = [...group.attempts].sort((a, b) => {
@@ -335,7 +453,9 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         return timeB - timeA;
       });
       
-      const latestAttempt = sortedAttempts[0];
+      const latestAttempt = selectedPaperIds
+        ? (sortedAttempts.find(a => selectedPaperIds.has(a.paperId)) || sortedAttempts[0])
+        : sortedAttempts[0];
       const userProfile = usersMap[group.studentId] || {};
       
       // Resolve student real name (avoid generic "Student")
@@ -352,9 +472,9 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       const semester = userProfile.semester || latestAttempt.semester || 'N/A';
 
       const latestDepartment = getPaperDepartment(latestAttempt.paperId);
-      const totalWarnings = group.attempts
-        .filter(a => getPaperDepartment(a.paperId) === latestDepartment)
-        .reduce((sum, a) => sum + (a.warnings || 0), 0);
+      const totalWarnings = selectedPaperIds
+        ? group.attempts.filter(a => selectedPaperIds.has(a.paperId)).reduce((sum, a) => sum + (a.warnings || 0), 0)
+        : group.attempts.filter(a => getPaperDepartment(a.paperId) === latestDepartment).reduce((sum, a) => sum + (a.warnings || 0), 0);
       
       return {
         studentId: group.studentId,
@@ -369,17 +489,17 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
       };
     });
 
-    const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
-
     return studentSummaries.filter(student => {
       if (!isSuperAdmin) {
-        const paperObj = papers.find(p => p.id === student.latestAttempt.paperId);
-        const isMyPaper = paperObj && (
-          (paperObj.createdById && paperObj.createdById === user?.uid) ||
-          (paperObj.createdByEmail && paperObj.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-          (paperObj.createdBy && paperObj.createdBy.toLowerCase() === user?.name?.toLowerCase())
-        );
-        if (!isMyPaper) {
+        const hasMyPaper = student.attempts.some(att => {
+          const pObj = papers.find(p => p.id === att.paperId);
+          return pObj && (
+            (pObj.createdById && pObj.createdById === user?.uid) ||
+            (pObj.createdByEmail && pObj.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+            (pObj.createdBy && pObj.createdBy.toLowerCase() === user?.name?.toLowerCase())
+          );
+        });
+        if (!hasMyPaper) {
           return false;
         }
       }
@@ -394,6 +514,11 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         }
       }
       
+      if (selectedPaperIds) {
+        const matchesExam = student.attempts.some(a => selectedPaperIds.has(a.paperId));
+        if (!matchesExam) return false;
+      }
+
       const latestDepartment = getPaperDepartment(student.latestAttempt.paperId);
       if (selectedDepartment !== 'All' && latestDepartment !== selectedDepartment && student.department !== selectedDepartment) {
         return false;
@@ -413,7 +538,7 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
 
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
 
-  // Department dropdown only shows departments from this teacher's own papers (or all for SuperAdmin)
+  // Department & Exam dropdown options
   const myPapers = isSuperAdmin
     ? papers
     : papers.filter(p =>
@@ -422,6 +547,27 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
         (p.createdBy && p.createdBy.toLowerCase() === user?.name?.toLowerCase())
       );
   const availableDepartments = ['All', ...new Set(myPapers.map(p => p.department).filter(Boolean))];
+
+  const availableExams = useMemo(() => {
+    const list = [];
+    const scopedExams = isSuperAdmin
+      ? exams
+      : exams.filter(e =>
+          (e.createdById && e.createdById === user?.uid) ||
+          (e.createdByEmail && e.createdByEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+          (e.createdBy && e.createdBy.toLowerCase() === user?.name?.toLowerCase())
+        );
+
+    scopedExams.forEach(e => {
+      list.push({ id: e.id, label: `📋 ${e.name || e.subject} (${e.department || 'All'})` });
+    });
+
+    myPapers.filter(p => !p.examId).forEach(p => {
+      list.push({ id: p.id, label: `📄 ${p.subject ? p.subject + ' - ' : ''}${p.title}` });
+    });
+
+    return list;
+  }, [exams, myPapers, isSuperAdmin, user]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', textAlign: 'left' }}>
@@ -441,39 +587,52 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
           </div>
 
           {/* Search and Filters Bar */}
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '2rem', alignItems: 'center' }}>
             <input 
               type="text" 
               className="input-field" 
-              placeholder="🔍 Search student by name..." 
+              placeholder="🔍 Search name, PRN, email..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ maxWidth: '300px', flex: '1 1 200px' }}
+              style={{ maxWidth: '260px', flex: '1 1 200px' }}
             />
-            {/* Department filter — SuperAdmin only */}
-            {isSuperAdmin && (
-              <select 
-                className="input-field" 
-                value={selectedDepartment} 
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                style={{ maxWidth: '200px' }}
-              >
-                {availableDepartments.map(sub => (
-                  <option key={sub} value={sub}>{sub}</option>
-                ))}
-              </select>
-            )}
+            {/* Exam / Subject Filter */}
+            <select
+              className="input-field"
+              value={selectedExamId}
+              onChange={(e) => setSelectedExamId(e.target.value)}
+              style={{ maxWidth: '280px' }}
+            >
+              <option value="All">All Exams ({availableExams.length})</option>
+              {availableExams.map(ex => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.label}
+                </option>
+              ))}
+            </select>
+            {/* Department filter */}
+            <select 
+              className="input-field" 
+              value={selectedDepartment} 
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              style={{ maxWidth: '180px' }}
+            >
+              {availableDepartments.map(sub => (
+                <option key={sub} value={sub}>{sub === 'All' ? 'All Departments' : sub}</option>
+              ))}
+            </select>
+            {/* Status filter */}
             <select 
               className="input-field" 
               value={selectedStatus} 
               onChange={(e) => setSelectedStatus(e.target.value)}
-              style={{ maxWidth: '200px' }}
+              style={{ maxWidth: '170px' }}
             >
               <option value="All">All Statuses</option>
+              <option value="in_progress">Active (In Exam)</option>
+              <option value="blocked">Blocked / Violation</option>
               <option value="submitted">Submitted</option>
-              <option value="blocked">Blocked</option>
               <option value="failed">Malpractice Fail</option>
-              <option value="in_progress">In Progress</option>
             </select>
           </div>
 
@@ -563,13 +722,89 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                           })()}
                         </div>
                         
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          Latest Exam: <strong>{getPaperTitle(student.latestAttempt.paperId)}</strong> ({student.department || getPaperDepartment(student.latestAttempt.paperId)})
-                          {student.semester && student.semester !== 'N/A' && <span> • Sem: {student.semester}</span>}
-                        </p>
+                        {(() => {
+                          const currentAtt = student.latestAttempt;
+                          const currentPaper = papers.find(p => p.id === currentAtt.paperId);
+                          const paperQuestions = questions.filter(q => q.paperId === currentAtt.paperId);
+                          const answeredCount = Object.keys(currentAtt.answers || {}).length;
+                          const totalQs = paperQuestions.length;
+                          const progressPercent = totalQs > 0 ? Math.round((answeredCount / totalQs) * 100) : 0;
+                          const isBlockedOrWarned = currentAtt.status === 'blocked_pending_review' || currentAtt.status === 'exited_on_violation' || currentAtt.status === 'malpractice_failed' || student.totalWarnings > 0 || Boolean(usersMap[student.studentId]?.unusualActivity);
+
+                          return (
+                            <div>
+                              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.2rem 0' }}>
+                                Exam: <strong>{getPaperTitle(currentAtt.paperId)}</strong> ({student.department || getPaperDepartment(currentAtt.paperId)})
+                                {student.semester && student.semester !== 'N/A' && <span> • Sem: {student.semester}</span>}
+                                {currentPaper?.setName && (
+                                  <span className="badge badge-info" style={{ marginLeft: '0.5rem', fontSize: '0.72rem' }}>
+                                    {currentPaper.setName}
+                                  </span>
+                                )}
+                              </p>
+
+                              {currentAtt.status === 'started' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary, #6366f1)' }}>
+                                    📝 {answeredCount} / {totalQs} Answered ({progressPercent}%)
+                                  </span>
+                                  <div style={{ width: '80px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <div style={{ width: `${progressPercent}%`, height: '100%', background: '#10b981', transition: 'width 0.3s ease' }} />
+                                  </div>
+                                  {currentAtt.elapsedTime > 0 && (
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                      ⏱️ {Math.round(currentAtt.elapsedTime / 60)}m elapsed
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {isBlockedOrWarned && (
+                                <p style={{ fontSize: '0.78rem', color: '#f87171', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <span>⚠️</span>
+                                  <span>
+                                    {usersMap[student.studentId]?.unusualActivity ? 'Account flagged with Unusual Activity. ' : ''}
+                                    {currentAtt.lastWarningReason || currentAtt.exitReason || 'App background / window exit detected.'}
+                                  </span>
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
 
-                      <div className="flex-row" style={{ alignItems: 'center' }}>
+                      <div className="flex-row" style={{ alignItems: 'center', gap: '0.6rem' }}>
+                        {/* Quick Unblock button if student is blocked or has warnings or unusualActivity */}
+                        {(student.latestAttempt.status === 'blocked_pending_review' || 
+                          student.latestAttempt.status === 'exited_on_violation' || 
+                          student.latestAttempt.status === 'malpractice_failed' || 
+                          student.totalWarnings > 0 || 
+                          usersMap[student.studentId]?.unusualActivity) && (
+                          <button
+                            className="btn btn-warning"
+                            style={{
+                              padding: '0.3rem 0.65rem',
+                              fontSize: '0.78rem',
+                              fontWeight: 600,
+                              background: '#f59e0b',
+                              color: '#111827',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickUnblockStudent(student);
+                            }}
+                            disabled={loading}
+                            title="Instantly unblock student and clear lockout/warnings"
+                          >
+                            ⚡ Quick Unblock
+                          </button>
+                        )}
                         <div className="warning-dot-container" style={{ marginRight: '0.5rem' }} title={`Warnings tally: ${student.totalWarnings} of 3`}>
                           <span className={`warning-dot ${student.totalWarnings >= 1 ? 'active' : 'inactive'}`} />
                           <span className={`warning-dot ${student.totalWarnings >= 2 ? 'active' : 'inactive'}`} />
@@ -883,18 +1118,18 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
           justifyContent: 'center',
           zIndex: 1000
         }}>
-          <div className="glass-card" style={{ maxWidth: '480px', width: '100%', padding: '2.5rem', textAlign: 'left' }}>
+          <div className="glass-card" style={{ maxWidth: '540px', width: '100%', padding: '2.5rem', textAlign: 'left' }}>
             <h3 style={{ fontSize: '1.5rem', color: '#ef4444', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               Review Blocked Student
             </h3>
-            <p style={{ fontSize: '0.95rem', marginBottom: '1.25rem' }}>
+            <p style={{ fontSize: '0.95rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
               <strong>Student Name:</strong> {reviewingAttempt.studentName}<br/>
               <strong>Department:</strong> {getPaperDepartment(reviewingAttempt.paperId)}<br/>
               <strong>Compromised Paper:</strong> {getPaperTitle(reviewingAttempt.paperId)}<br/>
               <strong>Warnings Tally:</strong> {reviewingAttempt.warnings} (Threshold exceeded)
             </p>
             <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.85rem', borderRadius: '8px', fontSize: '0.85rem', color: '#fca5a5', marginBottom: '1.5rem' }}>
-              ⚠️ Student was hard-blocked from their exam session due to multiple app-switching / minimize violations.
+              ⚠️ Reason: {reviewingAttempt.lastWarningReason || reviewingAttempt.exitReason || 'Student exceeded warning limit (app switching / window exit / camera interruption).'}
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -921,11 +1156,20 @@ function LiveMonitor({ user, defaultDuration = 45 }) {
                 🚫 Deny Access (Disqualify)
               </button>
               <button 
+                className="btn btn-warning" 
+                onClick={() => handleResumeCurrentPaper(reviewingAttempt)}
+                disabled={loading}
+                title="Unblock student on the SAME exam paper so they don't lose their current progress"
+              >
+                ⚡ Resume Current Exam
+              </button>
+              <button 
                 className="btn btn-primary" 
                 onClick={() => handleGrantAccess(reviewingAttempt)}
                 disabled={loading}
+                title="Assign an unused paper set from the department pool"
               >
-                {loading ? 'Processing...' : '✅ Grant Access (Unblock)'}
+                {loading ? 'Processing...' : '🔄 Reassign Next Paper Set'}
               </button>
             </div>
           </div>

@@ -10,7 +10,8 @@ const isAdmin = (user) => {
     role === 'superadmin' ||
     (user.uid && user.uid.startsWith('mock-uid-admin')) ||
     email.startsWith('admin') ||
-    email.includes('admin')
+    email.includes('admin') ||
+    email === 'yash.chiplunkar@dnyanshree.edu.in'
   );
 };
 
@@ -28,7 +29,8 @@ const isTeacherOrAdmin = (user) => {
     email.startsWith('admin') ||
     email.startsWith('teacher') ||
     email.includes('admin') ||
-    email.includes('faculty')
+    email.includes('faculty') ||
+    email === 'yash.chiplunkar@dnyanshree.edu.in'
   );
 };
 

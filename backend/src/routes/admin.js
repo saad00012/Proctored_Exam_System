@@ -92,6 +92,121 @@ router.patch('/users/:uid/verify-email', verifyToken, async (req, res) => {
   }
 });
 
+// Reusable helper to clear student security lockouts, reset credentials, and clean attempts
+const executeClearStudentLockout = async (uid, targetData, caller, options = {}) => {
+  const tempPassword = options.newPassword || 'Student@12345';
+  let finalLoginEmail = targetData.originalEmail || targetData.email;
+
+  // If alias explicitly requested by teacher/admin
+  if (options.useAlias) {
+    const nameParts = (targetData.name || 'Student').trim().split(/\s+/);
+    const middleInitial = nameParts.length > 2 ? nameParts[1][0].toLowerCase() + '.' : '1.';
+    const emailPrefix = finalLoginEmail.split('@')[0];
+    const domain = finalLoginEmail.split('@')[1] || 'dnyanshree.edu.in';
+    finalLoginEmail = `${emailPrefix.split('.')[0]}.${middleInitial}${emailPrefix.split('.')[1] || 'exam'}@${domain}`;
+  } else {
+    // Normal / default: restore canonical email and strip any accidental alias artifact
+    if (finalLoginEmail.includes('.1.') || finalLoginEmail.includes('.exam@') || finalLoginEmail.includes('.1@')) {
+      finalLoginEmail = finalLoginEmail.replace('.1.', '.').replace('.exam@', '@').replace('.1@', '@');
+    }
+  }
+
+  // 1. Unsuspend and mark verified in Firestore, update email, clean originalEmail if restored
+  const userUpdates = {
+    suspended: false,
+    suspendedAt: null,
+    emailVerified: true,
+    email: finalLoginEmail,
+    lastUnblockedAt: new Date().toISOString(),
+    unblockedBy: caller?.email || caller?.name || 'Admin',
+  };
+  if (!options.useAlias && targetData.originalEmail) {
+    userUpdates.originalEmail = admin.firestore.FieldValue.delete();
+  } else if (options.useAlias && finalLoginEmail !== targetData.email) {
+    userUpdates.originalEmail = targetData.originalEmail || targetData.email;
+  }
+  await db.collection('users').doc(uid).update(userUpdates);
+
+  // 2. Clear Firebase Auth lockouts, reset password, enable account, revoke refresh tokens
+  try {
+    await admin.auth().updateUser(uid, {
+      disabled: false,
+      emailVerified: true,
+      email: finalLoginEmail,
+      password: tempPassword
+    });
+    await admin.auth().revokeRefreshTokens(uid);
+  } catch (authErr) {
+    console.warn(`Could not update Firebase Auth status for ${uid}:`, authErr.message);
+    if (authErr.code === 'auth/email-already-exists') {
+      try {
+        await admin.auth().updateUser(uid, {
+          disabled: false,
+          emailVerified: true,
+          password: tempPassword
+        });
+        await admin.auth().revokeRefreshTokens(uid);
+      } catch (innerErr) {
+        console.warn(`Fallback auth update failed for ${uid}:`, innerErr.message);
+      }
+    }
+  }
+
+  // 3. Reset any blocked / failed attempt in Firestore to allow student back into the exam
+  const attemptsSnap = await db.collection('exam_attempts')
+    .where('studentId', '==', uid)
+    .get();
+
+  const batch = db.batch();
+  let unblockedAttemptsCount = 0;
+
+  attemptsSnap.forEach(attDoc => {
+    const att = attDoc.data();
+    if (['blocked_pending_review', 'malpractice_failed', 'exited_on_violation'].includes(att.status)) {
+      batch.update(attDoc.ref, {
+        status: 'started',
+        warnings: 0,
+        startedAt: new Date().toISOString(),
+        lastUnblockedAt: new Date().toISOString()
+      });
+      unblockedAttemptsCount++;
+    } else if (att.status === 'started' && (att.warnings || 0) > 0) {
+      batch.update(attDoc.ref, {
+        warnings: 0
+      });
+    }
+  });
+
+  // 4. Clear all proctoring violation logs for this student
+  const violSnap = await db.collection('violations')
+    .where('studentId', '==', uid)
+    .get();
+  violSnap.forEach(vDoc => batch.delete(vDoc.ref));
+
+  await batch.commit();
+
+  // 5. Record action in audit logs
+  try {
+    await db.collection('audit_logs').add({
+      timestamp: new Date().toISOString(),
+      action: 'clear_student_lockout',
+      teacherEmail: caller?.email || 'Admin',
+      teacherName: caller?.name || 'Faculty',
+      studentId: uid,
+      studentName: targetData.name || '',
+      details: `Cleared unusual activity (loginEmail: ${finalLoginEmail}), unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
+    });
+  } catch (_) {}
+
+  return {
+    uid,
+    loginEmail: finalLoginEmail,
+    password: tempPassword,
+    unblockedAttemptsCount,
+    deletedViolationsCount: violSnap.size
+  };
+};
+
 // Clear unusual activity / security lockouts for a student - ADMIN or FACULTY for department students
 router.post('/users/:uid/clear-unusual-activity', verifyToken, async (req, res) => {
   try {
@@ -107,105 +222,115 @@ router.post('/users/:uid/clear-unusual-activity', verifyToken, async (req, res) 
       return res.status(403).json({ error: 'Forbidden: You do not have permission to modify this user.' });
     }
 
-    const tempPassword = req.body.newPassword || 'Student@12345';
-    let finalLoginEmail = targetData.email;
-
-    // Check if alias bypass requested (for students whose email string is rate-limited by Google)
-    if (req.body.useAlias || req.body.bypassEmailLock) {
-      const nameParts = (targetData.name || 'Student').trim().split(/\s+/);
-      const middleInitial = nameParts.length > 2 ? nameParts[1][0].toLowerCase() + '.' : '1.';
-      const emailPrefix = targetData.email.split('@')[0];
-      const domain = targetData.email.split('@')[1] || 'dnyanshree.edu.in';
-      if (!emailPrefix.includes('.' + middleInitial)) {
-        finalLoginEmail = `${emailPrefix.split('.')[0]}.${middleInitial}${emailPrefix.split('.')[1] || 'exam'}@${domain}`;
-      } else {
-        finalLoginEmail = `${emailPrefix}.1@${domain}`;
-      }
-    }
-
-    // 1. Unsuspend and mark verified in Firestore
-    await db.collection('users').doc(uid).update({
-      suspended: false,
-      suspendedAt: null,
-      emailVerified: true,
-      email: finalLoginEmail,
-      lastUnblockedAt: new Date().toISOString(),
-      unblockedBy: req.user.email || req.user.name || 'Admin',
-      ...(finalLoginEmail !== targetData.email ? { originalEmail: targetData.email } : {})
+    const result = await executeClearStudentLockout(uid, targetData, req.user, {
+      newPassword: req.body.newPassword,
+      useAlias: Boolean(req.body.useAlias)
     });
 
-    // 2. Clear Firebase Auth lockouts, set password, and enable the account
-    try {
-      await admin.auth().updateUser(uid, {
-        disabled: false,
-        emailVerified: true,
-        email: finalLoginEmail,
-        password: tempPassword
-      });
-      // Revoke any tainted session tokens so client can obtain a fresh unblocked token
-      await admin.auth().revokeRefreshTokens(uid);
-    } catch (authErr) {
-      console.warn(`Could not update Firebase Auth status for ${uid}:`, authErr.message);
-    }
-
-    // 3. Reset any blocked / failed attempt in Firestore to allow student back into the exam
-    const attemptsSnap = await db.collection('exam_attempts')
-      .where('studentId', '==', uid)
-      .get();
-
-    const batch = db.batch();
-    let unblockedAttemptsCount = 0;
-
-    attemptsSnap.forEach(attDoc => {
-      const att = attDoc.data();
-      if (['blocked_pending_review', 'malpractice_failed', 'exited_on_violation'].includes(att.status)) {
-        batch.update(attDoc.ref, {
-          status: 'started',
-          warnings: 0,
-          startedAt: new Date().toISOString(),
-          lastUnblockedAt: new Date().toISOString()
-        });
-        unblockedAttemptsCount++;
-      } else if (att.status === 'started' && (att.warnings || 0) > 0) {
-        // Clear warning count back to 0
-        batch.update(attDoc.ref, {
-          warnings: 0
-        });
-      }
-    });
-
-    // 4. Clear all proctoring violation logs for this student
-    const violSnap = await db.collection('violations')
-      .where('studentId', '==', uid)
-      .get();
-    violSnap.forEach(vDoc => batch.delete(vDoc.ref));
-
-    await batch.commit();
-
-    // 5. Record action in audit logs
-    try {
-      await db.collection('audit_logs').add({
-        timestamp: new Date().toISOString(),
-        action: 'clear_student_lockout',
-        teacherEmail: req.user.email || 'Admin',
-        teacherName: req.user.name || 'Faculty',
-        studentId: uid,
-        studentName: targetData.name || '',
-        details: `Cleared unusual activity (loginEmail: ${finalLoginEmail}), unblocked ${unblockedAttemptsCount} exam session(s), and deleted ${violSnap.size} violation record(s).`
-      });
-    } catch (_) {}
-
-    console.log(`[Admin/Faculty] Cleared unusual activity and locks for student ${uid} (${targetData.name}) -> Login: ${finalLoginEmail}`);
+    console.log(`[Admin/Faculty] Cleared unusual activity and locks for student ${uid} (${targetData.name}) -> Login: ${result.loginEmail}`);
     res.json({
       success: true,
-      uid,
-      loginEmail: finalLoginEmail,
-      password: tempPassword,
-      message: `Cleared security locks! Student can now log in using Email: "${finalLoginEmail}" and Password: "${tempPassword}".`
+      uid: result.uid,
+      loginEmail: result.loginEmail,
+      password: result.password,
+      message: `Cleared security locks! Student can now log in using Email: "${result.loginEmail}" and Password: "${result.password}".`
     });
   } catch (error) {
     console.error('Error clearing unusual activity:', error);
     res.status(500).json({ error: 'Failed to clear student security lockouts: ' + error.message });
+  }
+});
+
+// Quick unblock student by Email, PRN, or UID
+router.post('/unblock-student-by-query', verifyToken, async (req, res) => {
+  try {
+    const { query: rawQuery, newPassword, useAlias } = req.body;
+    if (!rawQuery || typeof rawQuery !== 'string' || !rawQuery.trim()) {
+      return res.status(400).json({ error: 'Please provide a student Email, PRN number, or UID.' });
+    }
+    const q = rawQuery.trim().toLowerCase();
+
+    let targetDoc = null;
+    let targetUid = null;
+    let targetData = null;
+
+    // Check direct doc ID
+    const directDoc = await db.collection('users').doc(rawQuery.trim()).get();
+    if (directDoc.exists) {
+      targetDoc = directDoc;
+    }
+
+    // Check email
+    if (!targetDoc) {
+      const emailSnap = await db.collection('users').where('email', '==', rawQuery.trim()).limit(1).get();
+      if (!emailSnap.empty) targetDoc = emailSnap.docs[0];
+    }
+    if (!targetDoc) {
+      const emailSnap = await db.collection('users').where('email', '==', q).limit(1).get();
+      if (!emailSnap.empty) targetDoc = emailSnap.docs[0];
+    }
+    // Check originalEmail
+    if (!targetDoc) {
+      const origSnap = await db.collection('users').where('originalEmail', '==', rawQuery.trim()).limit(1).get();
+      if (!origSnap.empty) targetDoc = origSnap.docs[0];
+    }
+    // Check prnNumber
+    if (!targetDoc) {
+      const prnSnap = await db.collection('users').where('prnNumber', '==', rawQuery.trim()).limit(1).get();
+      if (!prnSnap.empty) targetDoc = prnSnap.docs[0];
+    }
+
+    // Fallback: Check Firebase Auth by email
+    if (!targetDoc && q.includes('@')) {
+      try {
+        const authUser = await admin.auth().getUserByEmail(q);
+        if (authUser) {
+          const authDoc = await db.collection('users').doc(authUser.uid).get();
+          if (authDoc.exists) {
+            targetDoc = authDoc;
+          } else {
+            targetUid = authUser.uid;
+            targetData = {
+              uid: authUser.uid,
+              email: authUser.email,
+              name: authUser.displayName || authUser.email.split('@')[0],
+              role: 'student',
+              department: 'All'
+            };
+            await db.collection('users').doc(targetUid).set(targetData);
+            targetDoc = await db.collection('users').doc(targetUid).get();
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!targetDoc) {
+      return res.status(404).json({ error: `No student found matching "${rawQuery}". Please verify the Email or PRN.` });
+    }
+
+    targetUid = targetDoc.id;
+    targetData = targetDoc.data();
+
+    if (!canManageUser(req.user, targetData)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to manage this student.' });
+    }
+
+    const result = await executeClearStudentLockout(targetUid, targetData, req.user, {
+      newPassword,
+      useAlias: Boolean(useAlias)
+    });
+
+    res.json({
+      success: true,
+      uid: result.uid,
+      studentName: targetData.name || '',
+      loginEmail: result.loginEmail,
+      password: result.password,
+      message: `Student ${targetData.name || result.loginEmail} unblocked successfully! Email: "${result.loginEmail}", Password: "${result.password}".`
+    });
+  } catch (error) {
+    console.error('Error in unblock-student-by-query:', error);
+    res.status(500).json({ error: 'Failed to unblock student: ' + error.message });
   }
 });
 
@@ -624,7 +749,7 @@ router.post('/database/clear-papers', verifyToken, async (req, res) => {
 
 // Get Audit Logs - ADMIN ONLY
 router.get('/audit-logs', verifyToken, async (req, res) => {
-  if (!req.user || (req.user.role !== 'superadmin' && req.user.role !== 'admin' && !req.user.email?.toLowerCase().startsWith('admin'))) {
+  if (!isAdmin(req.user)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -632,10 +757,11 @@ router.get('/audit-logs', verifyToken, async (req, res) => {
     const limitParam = parseInt(req.query.limit) || 100;
     const action = req.query.action;
 
-    let query = db.collection('audit_logs').orderBy('timestamp', 'desc').limit(limitParam);
+    let query = db.collection('audit_logs');
     if (action) {
       query = query.where('action', '==', action);
     }
+    query = query.orderBy('timestamp', 'desc').limit(limitParam);
 
     const snapshot = await query.get();
     const logs = [];
