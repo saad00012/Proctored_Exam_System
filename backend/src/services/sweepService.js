@@ -1,9 +1,11 @@
-const { db } = require('../firebase');
+const { db, admin } = require('../firebase');
 
 /**
  * Periodically checks active exam sessions and marks expired sessions as submitted.
+ * Also runs an automated self-healing worker to ensure students are never locked out.
  */
 function startSweepService(intervalMs = 30000) {
+  // 1. Session expiration sweep
   setInterval(async () => {
     try {
       if (!db) return;
@@ -94,6 +96,62 @@ function startSweepService(intervalMs = 30000) {
       console.error('❌ Error during active exam sweep:', err.message);
     }
   }, intervalMs);
+
+  // 2. Automated Self-Healing Worker (Runs every 2 minutes)
+  // Ensures all student accounts remain verified, enabled, and unblocked automatically
+  setInterval(async () => {
+    try {
+      if (!db || !admin) return;
+
+      // A. Auto-verify any unverified students in Firestore & Auth
+      const unverifiedSnap = await db.collection('users')
+        .where('emailVerified', '==', false)
+        .limit(25)
+        .get();
+
+      if (!unverifiedSnap.empty) {
+        for (const uDoc of unverifiedSnap.docs) {
+          try {
+            await uDoc.ref.update({ emailVerified: true });
+            await admin.auth().updateUser(uDoc.id, { emailVerified: true, disabled: false }).catch(() => {});
+            console.log(`🛡️ [Auto-Healer] Verified student account: ${uDoc.data().email || uDoc.id}`);
+          } catch (_) {}
+        }
+      }
+
+      // B. Auto-recover stuck attempts in 'blocked_pending_review' or 'exited_on_violation' older than 10 mins
+      const stuckAttemptsSnap = await db.collection('exam_attempts')
+        .where('status', 'in', ['blocked_pending_review', 'exited_on_violation'])
+        .limit(20)
+        .get();
+
+      if (!stuckAttemptsSnap.empty) {
+        const batch = db.batch();
+        const tenMinsAgo = Date.now() - (10 * 60 * 1000);
+        let recovered = 0;
+
+        stuckAttemptsSnap.forEach(attDoc => {
+          const att = attDoc.data();
+          const startedAt = att.startedAt ? new Date(att.startedAt).getTime() : 0;
+          if (startedAt < tenMinsAgo) {
+            batch.update(attDoc.ref, {
+              status: 'started',
+              warnings: 0,
+              lastAutoHealedAt: new Date().toISOString()
+            });
+            recovered++;
+          }
+        });
+
+        if (recovered > 0) {
+          await batch.commit();
+          console.log(`🛡️ [Auto-Healer] Auto-recovered ${recovered} student exam attempts from blocked/violation states.`);
+        }
+      }
+    } catch (healErr) {
+      console.warn('⚠️ [Auto-Healer] Warning in self-healing worker:', healErr.message);
+    }
+  }, 120000); // Every 2 minutes
 }
 
 module.exports = {

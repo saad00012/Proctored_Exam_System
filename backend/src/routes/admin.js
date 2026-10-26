@@ -839,4 +839,117 @@ router.post('/broadcast-notice', verifyToken, async (req, res) => {
   }
 });
 
+// POST /admin/heal-all-students — Mass self-heal all student accounts, emails, and lockouts
+router.post('/heal-all-students', verifyToken, async (req, res) => {
+  if (!isTeacherOrAdmin(req.user)) {
+    return res.status(403).json({ error: 'Forbidden: Insufficient permissions.' });
+  }
+
+  try {
+    if (!db || !admin) return res.status(500).json({ error: 'Database or Auth service not initialized.' });
+
+    const usersSnap = await db.collection('users').get();
+    let authUsers = [];
+    let nextPageToken;
+    do {
+      const listRes = await admin.auth().listUsers(1000, nextPageToken);
+      authUsers.push(...listRes.users);
+      nextPageToken = listRes.pageToken;
+    } while (nextPageToken);
+
+    const authMap = new Map();
+    authUsers.forEach(u => authMap.set(u.uid, u));
+
+    let verifiedCount = 0;
+    let enabledCount = 0;
+    let normalizedProfiles = 0;
+
+    for (const doc of usersSnap.docs) {
+      const data = doc.data();
+      const uid = doc.id;
+      let cleanEmail = (data.email || '').trim().toLowerCase();
+
+      // Clean alias artifacts
+      if (cleanEmail.includes('.1.') || cleanEmail.includes('.exam@') || cleanEmail.includes('.1@')) {
+        cleanEmail = cleanEmail.replace('.1.', '.').replace('.exam@', '@').replace('.1@', '@');
+      }
+      if (cleanEmail.endsWith('@dnyanshree.edu') && !cleanEmail.endsWith('.edu.in')) {
+        cleanEmail += '.in';
+      }
+      if (cleanEmail.endsWith('.edu.in.edu.in')) {
+        cleanEmail = cleanEmail.replace('.edu.in.edu.in', '.edu.in');
+      }
+
+      let firestoreUpdates = {};
+      if (data.email !== cleanEmail) firestoreUpdates.email = cleanEmail;
+      if (data.originalEmail) firestoreUpdates.originalEmail = admin.firestore.FieldValue.delete();
+      if (data.emailVerified !== true) firestoreUpdates.emailVerified = true;
+      if (data.suspended === true) {
+        firestoreUpdates.suspended = false;
+        firestoreUpdates.suspendedAt = null;
+      }
+
+      if (Object.keys(firestoreUpdates).length > 0) {
+        await db.collection('users').doc(uid).update(firestoreUpdates);
+        normalizedProfiles++;
+      }
+
+      const authUser = authMap.get(uid);
+      if (authUser) {
+        let authUpdates = {};
+        if (!authUser.emailVerified) {
+          authUpdates.emailVerified = true;
+          verifiedCount++;
+        }
+        if (authUser.disabled) {
+          authUpdates.disabled = false;
+          enabledCount++;
+        }
+        if (Object.keys(authUpdates).length > 0) {
+          await admin.auth().updateUser(uid, authUpdates).catch(() => {});
+        }
+      }
+    }
+
+    // Recover stuck attempts
+    const stuckSnap = await db.collection('exam_attempts')
+      .where('status', 'in', ['blocked_pending_review', 'exited_on_violation'])
+      .get();
+
+    let recoveredAttempts = 0;
+    if (!stuckSnap.empty) {
+      const batch = db.batch();
+      stuckSnap.forEach(attDoc => {
+        batch.update(attDoc.ref, {
+          status: 'started',
+          warnings: 0,
+          lastHealedAt: new Date().toISOString()
+        });
+        recoveredAttempts++;
+      });
+      await batch.commit();
+    }
+
+    // Audit log
+    try {
+      await db.collection('audit_logs').add({
+        timestamp: new Date().toISOString(),
+        action: 'admin_triggered_heal_all_students',
+        teacherEmail: req.user.email,
+        teacherName: req.user.name || 'Faculty/Admin',
+        details: `Mass healed student accounts: verified ${verifiedCount} auth accounts, enabled ${enabledCount} disabled accounts, updated ${normalizedProfiles} Firestore profiles, and unblocked ${recoveredAttempts} stuck exam attempts.`
+      });
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `System self-heal completed: verified ${verifiedCount} auth accounts, enabled ${enabledCount} accounts, normalized ${normalizedProfiles} profiles, and unblocked ${recoveredAttempts} exam sessions.`,
+      stats: { verifiedCount, enabledCount, normalizedProfiles, recoveredAttempts }
+    });
+  } catch (err) {
+    console.error('Error during heal-all-students:', err);
+    res.status(500).json({ error: 'Failed to complete system self-heal: ' + err.message });
+  }
+});
+
 module.exports = router;
