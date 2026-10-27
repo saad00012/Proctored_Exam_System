@@ -64,6 +64,62 @@ export function splitScheduleDateTime(dtStr) {
   }
 }
 
+export function extractCellText(cellOrVal) {
+  if (cellOrVal == null) return '';
+  const val = (cellOrVal && typeof cellOrVal === 'object' && 'value' in cellOrVal) ? cellOrVal.value : cellOrVal;
+  if (val == null) return '';
+
+  if (typeof val === 'string') return val.trim();
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val).trim();
+
+  // 1. Excel Rich Text object (generated when text contains symbols like =, /, @, &, (), %, ?, bold/italics)
+  if (val.richText && Array.isArray(val.richText)) {
+    return val.richText.map(part => part.text || '').join('').trim();
+  }
+
+  // 2. Excel Formula object (triggered when text starts with "=" or contains symbols like =, /, (, ), %, &)
+  if (val.formula) {
+    if (val.result !== undefined && val.result !== null) {
+      if (typeof val.result === 'string' && val.result !== '[object Object]') return val.result.trim();
+      if (typeof val.result === 'number') return String(val.result).trim();
+      if (val.result.richText && Array.isArray(val.result.richText)) {
+        return val.result.richText.map(part => part.text || '').join('').trim();
+      }
+      // If result is an Excel error (e.g. { error: '#NAME?' } because text was "= V / R"), recover the original text
+      if (typeof val.result === 'object' && val.result.error) {
+        return `=${val.formula}`.trim();
+      }
+    }
+    // Result was not computed or pending, return formula text itself
+    return `=${val.formula}`.trim();
+  }
+
+  // 3. Formula result without formula field
+  if (val.result !== undefined && val.result !== null) {
+    if (typeof val.result === 'string' && val.result !== '[object Object]') return val.result.trim();
+    if (typeof val.result === 'number') return String(val.result).trim();
+    if (val.result.richText && Array.isArray(val.result.richText)) {
+      return val.result.richText.map(part => part.text || '').join('').trim();
+    }
+  }
+
+  // 4. Hyperlink object (triggered by emails with @, web links, or text containing & and ?)
+  if (val.text !== undefined && val.text !== null) {
+    return String(val.text).trim();
+  }
+  if (val.hyperlink) {
+    return String(val.hyperlink).trim();
+  }
+
+  // 5. Fallback to cell.text
+  if (cellOrVal && typeof cellOrVal === 'object' && typeof cellOrVal.text === 'string' && cellOrVal.text.trim()) {
+    return cellOrVal.text.trim();
+  }
+
+  const str = String(val).trim();
+  return str === '[object Object]' ? '' : str;
+}
+
 export function parseScheduleDateTime(valB, valC) {
   if (valB == null && valC == null) return '';
 
@@ -357,7 +413,7 @@ function ExamImport({ user, onClose, onImported }) {
       }
 
       const cellVal = (col, row) => infoSheet.getCell(col + row).value;
-      const cell = (row) => { const v = cellVal('B', row); return v == null ? '' : String(v).trim(); };
+      const cell = (row) => extractCellText(infoSheet.getCell('B' + row));
       const examName = cell(3), subject = cell(4), department = cell(5), semester = cell(6);
       const durationRaw = cell(7);
       const scheduleStart = parseScheduleDateTime(cellVal('B', 8), cellVal('C', 8));
@@ -393,13 +449,13 @@ function ExamImport({ user, onClose, onImported }) {
         const questions = []; const setErrs = [];
         sheet.eachRow({ includeEmpty: false }, (row, rowIdx) => {
           if (rowIdx === 1) return;
-          const qText = row.getCell(2).value?.toString().trim(); if (!qText) return;
-          const optA = row.getCell(3).value?.toString().trim() || '';
-          const optB = row.getCell(4).value?.toString().trim() || '';
-          const optC = row.getCell(5).value?.toString().trim() || '';
-          const optD = row.getCell(6).value?.toString().trim() || '';
-          const correctNum = parseInt(String(row.getCell(7).value ?? '').trim());
-          const marksVal = parseFloat(String(row.getCell(8).value ?? '').trim());
+          const qText = extractCellText(row.getCell(2)); if (!qText) return;
+          const optA = extractCellText(row.getCell(3));
+          const optB = extractCellText(row.getCell(4));
+          const optC = extractCellText(row.getCell(5));
+          const optD = extractCellText(row.getCell(6));
+          const correctNum = parseInt(extractCellText(row.getCell(7)));
+          const marksVal = parseFloat(extractCellText(row.getCell(8)));
           const qMarks = (!isNaN(marksVal) && marksVal > 0) ? marksVal : 1;
 
           if (!optA || !optB || !optC || !optD)

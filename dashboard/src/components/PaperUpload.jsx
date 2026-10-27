@@ -89,7 +89,7 @@ function ActionMenu({ actions }) {
 }
 
 function PaperUpload({ user }) {
-  const { role, departments = [], getAuthToken } = useApp();
+  const { role, departments = [], getAuthToken, papers: contextPapers = [], exams: contextExams = [], refreshPapers, refreshExams } = useApp();
   const isSuperAdmin = role === 'superadmin' || role === 'admin' || user?.role === 'superadmin' || user?.role === 'admin' || user?.email?.toLowerCase().startsWith('admin');
 
   const formatScheduleDate = (dateStr) => {
@@ -209,6 +209,9 @@ function PaperUpload({ user }) {
 
   // Sync papers from Firestore
   useEffect(() => {
+    if (contextPapers.length > 0) { setPapers(contextPapers); return; }
+    getDocs(collection(db, 'papers')).then(snap => { const pList = []; snap.forEach(d => pList.push({ id: d.id, ...d.data() })); setPapers(pList); }).catch(console.error); return () => {};
+    return;
     const unsubscribe = onSnapshot(collection(db, 'papers'), (snapshot) => {
       const papersList = [];
       snapshot.forEach((doc) => {
@@ -224,6 +227,8 @@ function PaperUpload({ user }) {
 
   // Sync exams from Firestore
   useEffect(() => {
+    if (contextExams.length > 0) { setExams(contextExams); return; }
+    getDocs(collection(db, 'exams')).then(snap => { const eList = []; snap.forEach(d => eList.push({ id: d.id, ...d.data() })); setExams(eList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))); }).catch(console.error); return () => {};
     const unsubscribe = onSnapshot(collection(db, 'exams'), (snapshot) => {
       const examsList = [];
       snapshot.forEach((doc) => {

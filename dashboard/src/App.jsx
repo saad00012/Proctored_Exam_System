@@ -30,7 +30,13 @@ function App() {
     warningThreshold,
     setWarningThreshold,
     getAuthToken,
-    setAttempts
+    setAttempts,
+    isLiveSyncActive,
+    isIdlePaused,
+    pauseReason,
+    resumeLiveSync,
+    toggleLiveSync,
+    refreshAllStaticData
   } = useApp();
 
   const { metrics, liveAlerts } = useRealtimeMetrics();
@@ -483,6 +489,50 @@ function App() {
             </h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {/* Live Sync Status & Sleep Mode Toggle */}
+            {isLiveSyncActive ? (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={toggleLiveSync}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  color: '#10b981',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  padding: '0.35rem 0.75rem',
+                  cursor: 'pointer'
+                }}
+                title="Live Sync Active: Real-time Firestore streaming enabled. Click to pause."
+              >
+                <span className="live-pulse-dot" style={{ width: '7px', height: '7px' }}></span>
+                Live Sync: ON
+              </button>
+            ) : (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={resumeLiveSync}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: '#d97706',
+                  border: '1px solid rgba(245, 158, 11, 0.5)',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  padding: '0.35rem 0.75rem',
+                  cursor: 'pointer'
+                }}
+                title="Live Sync Paused to save Firestore reads. Click to resume real-time updates."
+              >
+                <span>⏸️</span> Live Sync: PAUSED
+              </button>
+            )}
+
             <button
               className="btn btn-secondary btn-sm"
               onClick={handleLogout}
@@ -493,6 +543,39 @@ function App() {
             </button>
           </div>
         </header>
+
+        {/* ── Auto-Pause Inactivity / Sleep Mode Banner ────────────────────── */}
+        {isIdlePaused && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.75rem 1.25rem',
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: '10px',
+            marginBottom: '1.25rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>⏸️</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#b45309' }}>
+                  Live Sync Paused ({pauseReason === 'background' ? 'Tab in Background for >1 min' : 'Inactive for 1 min'})
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Continuous database reads have been stopped to save college cloud resources. Move mouse or resume below.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={resumeLiveSync}
+              className="btn btn-primary btn-sm"
+              style={{ fontWeight: 700, padding: '0.4rem 0.9rem', fontSize: '0.82rem' }}
+            >
+              ▶ Resume Live Sync
+            </button>
+          </div>
+        )}
 
         {/* ── Blocking Modal Popup for Official Admin Broadcast ────────── */}
         {(() => {

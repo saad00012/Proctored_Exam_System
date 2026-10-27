@@ -204,6 +204,7 @@ fun ExamScreen(
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var showWarningDialog by remember { mutableStateOf(false) }
     var warningCountForDialog by remember { mutableIntStateOf(0) }
+    var showSkipConfirmDialog by remember { mutableStateOf(false) }
 
     val currentIsExamRunning by rememberUpdatedState(isExamRunning)
 
@@ -1017,6 +1018,45 @@ fun ExamScreen(
         )
     }
 
+    if (showSkipConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showSkipConfirmDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Warning",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text("Skip Question?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    text = "You have not selected an answer for Question ${currentQuestionIdx + 1}.\n\n" +
+                           "⚠️ You will NOT be able to return to this question again. Are you sure you want to skip?",
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSkipConfirmDialog = false
+                        currentQuestionIdx += 1
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Yes, Skip")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showSkipConfirmDialog = false }) {
+                    Text("Stay & Answer")
+                }
+            }
+        )
+    }
+
     val currentQuestion = questions.getOrNull(currentQuestionIdx)
 
     Scaffold(
@@ -1084,7 +1124,7 @@ fun ExamScreen(
                 }
             )
         },
-        bottomBar = {
+        /* bottomBar removed in favor of full-screen clean question view
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1160,6 +1200,7 @@ fun ExamScreen(
                 }
             }
         }
+        */
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -1399,7 +1440,7 @@ fun ExamScreen(
                                 }
                             } else {
                                 OutlinedButton(
-                                    onClick = { currentQuestionIdx += 1 },
+                                    onClick = { showSkipConfirmDialog = true },
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Text("Skip & Next →", fontSize = 13.sp)

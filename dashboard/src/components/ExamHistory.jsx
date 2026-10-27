@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { exportStyledExcelGradeSheet, printCollegeGradeSheet } from '../utils/gradeSheetExporter';
 
 function ExamHistory({ user }) {
-  const { exams, papers, questions, attempts, students, departments = [], role } = useApp();
+  const { exams, papers, questions, attempts, students, departments = [], role, loadHistoricalAttempts, isHistoryLoading, hasHistoryLoaded } = useApp();
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -347,6 +347,54 @@ function ExamHistory({ user }) {
         <h2>📊 Exam History &amp; Scorecards</h2>
         <p>Comprehensive records of conducted proctored examinations, student participation, and score summaries.</p>
       </div>
+
+      {/* Historical Data Loading Banner */}
+      {!hasHistoryLoaded ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          padding: '0.85rem 1.25rem',
+          background: 'rgba(59, 130, 246, 0.08)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: '10px',
+          marginBottom: '1.5rem'
+        }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#2563eb' }}>
+              ⚡ Showing Recent Exam Attempts ({attempts.length} attempts in fast memory)
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              To save database quota, historical records older than 24 hours are not streamed automatically.
+            </div>
+          </div>
+          <button
+            onClick={loadHistoricalAttempts}
+            disabled={isHistoryLoading}
+            className="btn btn-secondary"
+            style={{ padding: '0.45rem 1rem', fontSize: '0.84rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            {isHistoryLoading ? '⏳ Loading History...' : '📂 Load Full Semester History'}
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.65rem 1rem',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.25)',
+          borderRadius: '8px',
+          marginBottom: '1.5rem'
+        }}>
+          <span style={{ fontSize: '0.85rem', color: '#059669', fontWeight: 600 }}>
+            ✅ Full Semester History Loaded ({attempts.length} attempts available).
+          </span>
+        </div>
+      )}
 
       {/* Top Metric Cards */}
       <div className="grid-cols-1-3" style={{ marginBottom: '2rem' }}>

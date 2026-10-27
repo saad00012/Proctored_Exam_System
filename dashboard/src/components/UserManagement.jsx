@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import API_BASE_URL from '../config';
 import { useApp } from '../context/AppContext';
@@ -100,7 +100,7 @@ function ActionMenu({ actions }) {
 }
 
 function UserManagement({ user }) {
-  const { departments = [] } = useApp();
+  const { departments = [], students: contextStudents = [], teachers: contextTeachers = [], attempts: contextAttempts = [], refreshUsers } = useApp();
   const isSuperAdmin = user?.role === 'superadmin' || 
                        user?.role === 'admin' || 
                        user?.email?.toLowerCase().startsWith('admin') || 
@@ -314,67 +314,47 @@ function UserManagement({ user }) {
     'Semester 8'
   ];
 
-  // Sync users from Firestore live
+  // Load users from context & refresh on demand (no continuous full-collection streaming)
   useEffect(() => {
+    if (contextStudents.length > 0 || contextTeachers.length > 0) {
+      setStudents(contextStudents);
+      setTeachers(contextTeachers);
+    }
+  }, [contextStudents, contextTeachers]);
+
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     if (!db) {
       setLoading(false);
       return;
     }
+    try {
+      const [teachersSnap, studentsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'users'), where('role', '==', 'teacher'))),
+        getDocs(query(collection(db, 'users'), where('role', '==', 'student')))
+      ]);
+      const tList = [];
+      teachersSnap.forEach((doc) => tList.push({ uid: doc.id, ...doc.data() }));
+      setTeachers(tList);
 
-    const unsubTeachers = onSnapshot(
-      query(collection(db, 'users'), where('role', '==', 'teacher')),
-      (snapshot) => {
-        const list = [];
-        snapshot.forEach((doc) => {
-          list.push({ uid: doc.id, ...doc.data() });
-        });
-        setTeachers(list);
-      },
-      (error) => {
-        console.error('Error syncing teachers:', error);
-      }
-    );
-
-    const unsubStudents = onSnapshot(
-      query(collection(db, 'users'), where('role', '==', 'student')),
-      (snapshot) => {
-        const list = [];
-        snapshot.forEach((doc) => {
-          list.push({ uid: doc.id, ...doc.data() });
-        });
-        setStudents(list);
-      },
-      (error) => {
-        console.error('Error syncing students:', error);
-      }
-    );
-
-    const unsubAttempts = onSnapshot(
-      collection(db, 'exam_attempts'),
-      (snapshot) => {
-        const list = [];
-        snapshot.forEach((doc) => {
-          list.push({ id: doc.id, ...doc.data() });
-        });
-        setAttempts(list);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error syncing attempts:', error);
-        setLoading(false);
-      }
-    );
-
-    return () => {
-      unsubTeachers();
-      unsubStudents();
-      unsubAttempts();
-    };
+      const sList = [];
+      studentsSnap.forEach((doc) => sList.push({ uid: doc.id, ...doc.data() }));
+      setStudents(sList);
+    } catch (err) {
+      console.error('Error fetching users in UserManagement:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    if (contextStudents.length === 0 && contextTeachers.length === 0) {
+      loadUsers();
+    }
+  }, [contextStudents.length, contextTeachers.length, loadUsers]);
+
   const getStudentExamsCount = (uid) => {
-    return attempts.filter((a) => a.studentId === uid).length;
+    return contextAttempts.filter((a) => a.studentId === uid).length;
   };
 
   // CREATE USER API CALL
@@ -644,9 +624,19 @@ function UserManagement({ user }) {
             : `Manage, edit, verify, or reset credentials for students in your department (${facultyDepts.join(', ')}).`}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setCreateRole(isSuperAdmin && activeTab === 'teachers' ? 'teacher' : 'student'); setShowCreateModal(true); }}>
-          ➕ {isSuperAdmin ? 'Register User' : 'Register Student'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => { loadUsers(); if (refreshUsers) refreshUsers(); }}
+            disabled={loading}
+            title="Refresh user directory"
+          >
+            {loading ? '⏳' : '🔄 Refresh'}
+          </button>
+          <button className="btn btn-primary" onClick={() => { setCreateRole(isSuperAdmin && activeTab === 'teachers' ? 'teacher' : 'student'); setShowCreateModal(true); }}>
+            ➕ {isSuperAdmin ? 'Register User' : 'Register Student'}
+          </button>
+        </div>
       </div>
 
       {/* Tabs Row (Only shown if Super Admin; for Faculty, it is purely Students) */}

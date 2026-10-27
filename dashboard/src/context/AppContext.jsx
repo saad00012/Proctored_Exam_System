@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { collection, doc, getDoc, setDoc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -37,6 +37,15 @@ export function AppProvider({ children }) {
   // Policies & Settings
   const [defaultDuration, setDefaultDuration] = useState(45);
   const [warningThreshold, setWarningThreshold] = useState(3);
+
+  // Inactivity & Sleep / Auto-Pause Mode state (to avoid runaway read charges)
+  const [isLiveSyncActive, setIsLiveSyncActive] = useState(true);
+  const [isIdlePaused, setIsIdlePaused] = useState(false);
+  const [pauseReason, setPauseReason] = useState(null); // 'idle' | 'background' | 'manual'
+
+  // Exam History load state
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [hasHistoryLoaded, setHasHistoryLoaded] = useState(false);
 
   // Helper to fetch fresh ID token
   const getAuthToken = useCallback(async () => {
@@ -228,15 +237,105 @@ export function AppProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
-  // Single-source Firestore Subscriptions (Active only when user logged in)
-  useEffect(() => {
-    if (!db || !user) return;
+  // ─────────────────────────────────────────────────────────────────────────────
+  // INACTIVITY & TAB VISIBILITY DETECTOR (Auto-Pauses Live Sync to Save Quota)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const resumeLiveSync = useCallback(() => {
+    setIsIdlePaused(false);
+    setPauseReason(null);
+    setIsLiveSyncActive(true);
+  }, []);
 
-    // 1. Users (Teachers & Students)
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+  const toggleLiveSync = useCallback(() => {
+    setIsLiveSyncActive(prev => {
+      const next = !prev;
+      if (!next) {
+        setIsIdlePaused(false);
+        setPauseReason('manual');
+      } else {
+        setPauseReason(null);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let idleTimer = null;
+    let bgTimer = null;
+    const IDLE_TIMEOUT_MS = 1 * 60 * 1000; // 1 minute no user interaction
+    const BG_GRACE_PERIOD_MS = 1 * 60 * 1000; // 1 minute grace period for background tab
+
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      // Auto-wake if paused due to idle and user returns to typing/mouse
+      if (isIdlePaused && pauseReason === 'idle') {
+        setIsIdlePaused(false);
+        setPauseReason(null);
+        setIsLiveSyncActive(true);
+      }
+      idleTimer = setTimeout(() => {
+        setIsIdlePaused(true);
+        setPauseReason('idle');
+        setIsLiveSyncActive(false);
+        console.log('⏸️ [Proctor Console] Auto-paused live sync due to 1m inactivity to save Firestore reads.');
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab minimized or in background — 1 min grace period:
+        // If teacher returns within 1 minute, listener was NEVER dropped (0 reconnect penalty!)
+        // If teacher is away > 1 min, disconnect completely to save reads.
+        if (bgTimer) clearTimeout(bgTimer);
+        bgTimer = setTimeout(() => {
+          setIsIdlePaused(true);
+          setPauseReason('background');
+          setIsLiveSyncActive(false);
+          console.log('⏸️ [Proctor Console] Auto-paused live sync: Tab hidden in background for >1 min.');
+        }, BG_GRACE_PERIOD_MS);
+      } else {
+        // Tab restored to foreground
+        if (bgTimer) {
+          clearTimeout(bgTimer);
+          bgTimer = null;
+        }
+        if (isIdlePaused && pauseReason === 'background') {
+          setIsIdlePaused(false);
+          setPauseReason(null);
+          setIsLiveSyncActive(true);
+          console.log('▶️ [Proctor Console] Resumed live sync on tab return.');
+        }
+        resetIdleTimer();
+      }
+    };
+
+    const activityEvents = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+    activityEvents.forEach(evt => window.addEventListener(evt, resetIdleTimer, { passive: true }));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    resetIdleTimer();
+
+    return () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (bgTimer) clearTimeout(bgTimer);
+      activityEvents.forEach(evt => window.removeEventListener(evt, resetIdleTimer));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, isIdlePaused, pauseReason]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SOLUTION C: ONE-TIME STATIC DATA LOADERS (Users, Papers, Exams, Questions)
+  // Instead of continuous full-collection streaming, fetch once and provide refresh.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const refreshUsers = useCallback(async () => {
+    if (!db) return;
+    try {
+      const snap = await getDocs(collection(db, 'users'));
       const studentList = [];
       const teacherList = [];
-      snapshot.forEach((docSnap) => {
+      snap.forEach((docSnap) => {
         const data = docSnap.data();
         const depts = Array.isArray(data.departments) && data.departments.length > 0
           ? data.departments
@@ -261,47 +360,69 @@ export function AppProvider({ children }) {
       });
       setStudents(studentList);
       setTeachers(teacherList);
-    }, (err) => console.error('Error syncing users in AppContext:', err));
+    } catch (err) {
+      console.error('Error fetching users in AppContext:', err);
+    }
+  }, []);
 
-    // 2. Exam Attempts
-    const unsubAttempts = onSnapshot(collection(db, 'exam_attempts'), (snapshot) => {
+  const refreshPapers = useCallback(async () => {
+    if (!db) return;
+    try {
+      const snap = await getDocs(collection(db, 'papers'));
       const list = [];
-      snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setAttempts(list);
-    }, (err) => console.error('Error syncing exam_attempts in AppContext:', err));
-
-    // 3. Papers
-    const unsubPapers = onSnapshot(collection(db, 'papers'), (snapshot) => {
-      const list = [];
-      snapshot.forEach((docSnap) => {
+      snap.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setPapers(list);
-    }, (err) => console.error('Error syncing papers in AppContext:', err));
+    } catch (err) {
+      console.error('Error fetching papers in AppContext:', err);
+    }
+  }, []);
 
-    // 4. Exams
-    const unsubExams = onSnapshot(collection(db, 'exams'), (snapshot) => {
+  const refreshExams = useCallback(async () => {
+    if (!db) return;
+    try {
+      const snap = await getDocs(collection(db, 'exams'));
       const list = [];
-      snapshot.forEach((docSnap) => {
+      snap.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setExams(list);
-    }, (err) => console.error('Error syncing exams in AppContext:', err));
+    } catch (err) {
+      console.error('Error fetching exams in AppContext:', err);
+    }
+  }, []);
 
-    // 5. Questions - one-time fetch on login rather than continuous streaming listener
-    // Questions are static during active exams; this saves ~500,000 redundant document reads
-    getDocs(collection(db, 'questions')).then((snapshot) => {
+  const refreshQuestions = useCallback(async () => {
+    if (!db) return;
+    try {
+      const snap = await getDocs(collection(db, 'questions'));
       const list = [];
-      snapshot.forEach((docSnap) => {
+      snap.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setQuestions(list);
-    }).catch((err) => console.error('Error fetching questions in AppContext:', err));
+    } catch (err) {
+      console.error('Error fetching questions in AppContext:', err);
+    }
+  }, []);
 
-    // 6. Whitelisted Domains
-    const unsubDomains = onSnapshot(collection(db, 'allowed_domains'), (snapshot) => {
+  const refreshAllStaticData = useCallback(async () => {
+    await Promise.all([
+      refreshUsers(),
+      refreshPapers(),
+      refreshExams(),
+      refreshQuestions()
+    ]);
+  }, [refreshUsers, refreshPapers, refreshExams, refreshQuestions]);
+
+  // Initial load of static collections once when user logs in
+  useEffect(() => {
+    if (!db || !user) return;
+    refreshAllStaticData();
+
+    // Fetch allowed domains once
+    getDocs(collection(db, 'allowed_domains')).then((snapshot) => {
       const domains = [];
       snapshot.forEach((docSnap) => {
         if (docSnap.data().isActive !== false) {
@@ -309,16 +430,67 @@ export function AppProvider({ children }) {
         }
       });
       if (domains.length > 0) setAllowedDomains(domains);
-    }, (err) => console.error('Error syncing allowed_domains in AppContext:', err));
+    }).catch(err => console.error('Error fetching allowed_domains:', err));
+  }, [user, refreshAllStaticData]);
 
-    return () => {
-      unsubUsers();
-      unsubAttempts();
-      unsubPapers();
-      unsubExams();
-      unsubDomains();
-    };
-  }, [user]);
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SOLUTION A: DATE-SCOPED LIVE ATTEMPTS LISTENER (Today / Rolling 24 Hours Only)
+  // ─────────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!db || !user || !isLiveSyncActive) return;
+
+    // Rolling 24-hour cutoff — captures any ongoing exam without loading past months
+    const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const attemptsQuery = query(
+      collection(db, 'exam_attempts'),
+      where('startedAt', '>=', cutoffDate)
+    );
+
+    const unsubAttempts = onSnapshot(attemptsQuery, (snapshot) => {
+      const list = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      setAttempts(prev => {
+        // If full semester history was loaded, merge today's updates into history
+        if (hasHistoryLoaded && prev.length > list.length) {
+          const liveMap = new Map(list.map(item => [item.id, item]));
+          const merged = prev.map(oldItem => liveMap.has(oldItem.id) ? liveMap.get(oldItem.id) : oldItem);
+          const existingIds = new Set(prev.map(p => p.id));
+          list.forEach(item => {
+            if (!existingIds.has(item.id)) merged.push(item);
+          });
+          return merged;
+        }
+        return list;
+      });
+    }, (err) => console.error('Error syncing 24h exam_attempts in AppContext:', err));
+
+    return () => unsubAttempts();
+  }, [user, isLiveSyncActive, hasHistoryLoaded]);
+
+  // On-Demand loader for full historical attempts (for ExamHistory)
+  const loadHistoricalAttempts = useCallback(async () => {
+    if (!db) return [];
+    setIsHistoryLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'exam_attempts'));
+      const list = [];
+      snap.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setAttempts(list);
+      setHasHistoryLoaded(true);
+      return list;
+    } catch (e) {
+      console.error('Failed to load historical attempts:', e);
+      return [];
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, []);
 
   // Global Policies loader
   useEffect(() => {
@@ -364,7 +536,23 @@ export function AppProvider({ children }) {
     setDefaultDuration,
     warningThreshold,
     setWarningThreshold,
-    getAuthToken
+    getAuthToken,
+    // Realtime Sync & Auto-Pause controls
+    isLiveSyncActive,
+    isIdlePaused,
+    pauseReason,
+    resumeLiveSync,
+    toggleLiveSync,
+    // Static Data Refreshers
+    refreshAllStaticData,
+    refreshUsers,
+    refreshPapers,
+    refreshExams,
+    refreshQuestions,
+    // Historical Attempts Loader
+    loadHistoricalAttempts,
+    isHistoryLoading,
+    hasHistoryLoaded
   }), [
     user,
     role,
@@ -382,7 +570,20 @@ export function AppProvider({ children }) {
     allowedDomains,
     defaultDuration,
     warningThreshold,
-    getAuthToken
+    getAuthToken,
+    isLiveSyncActive,
+    isIdlePaused,
+    pauseReason,
+    resumeLiveSync,
+    toggleLiveSync,
+    refreshAllStaticData,
+    refreshUsers,
+    refreshPapers,
+    refreshExams,
+    refreshQuestions,
+    loadHistoricalAttempts,
+    isHistoryLoading,
+    hasHistoryLoaded
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
