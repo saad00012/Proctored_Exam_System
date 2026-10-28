@@ -407,6 +407,27 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // On-Demand loader for full historical attempts (for ExamHistory)
+  const loadHistoricalAttempts = useCallback(async () => {
+    if (!db) return [];
+    setIsHistoryLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'exam_attempts'));
+      const list = [];
+      snap.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setAttempts(list);
+      setHasHistoryLoaded(true);
+      return list;
+    } catch (e) {
+      console.error('Failed to load historical attempts:', e);
+      return [];
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, []);
+
   const refreshAllStaticData = useCallback(async () => {
     await Promise.all([
       refreshUsers(),
@@ -471,27 +492,6 @@ export function AppProvider({ children }) {
 
     return () => unsubAttempts();
   }, [user, isLiveSyncActive]);
-
-  // On-Demand loader for full historical attempts (for ExamHistory)
-  const loadHistoricalAttempts = useCallback(async () => {
-    if (!db) return [];
-    setIsHistoryLoading(true);
-    try {
-      const snap = await getDocs(collection(db, 'exam_attempts'));
-      const list = [];
-      snap.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setAttempts(list);
-      setHasHistoryLoaded(true);
-      return list;
-    } catch (e) {
-      console.error('Failed to load historical attempts:', e);
-      return [];
-    } finally {
-      setIsHistoryLoading(false);
-    }
-  }, []);
 
   // Global Policies loader
   useEffect(() => {
