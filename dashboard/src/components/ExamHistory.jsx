@@ -28,6 +28,13 @@ function ExamHistory({ user }) {
     'Semester 8'
   ];
 
+  // Ensure full semester history is automatically loaded upon entering Exam History
+  React.useEffect(() => {
+    if (!hasHistoryLoaded && !isHistoryLoading) {
+      loadHistoricalAttempts();
+    }
+  }, [hasHistoryLoaded, isHistoryLoading, loadHistoricalAttempts]);
+
   // Compute student score
   const computeScore = (attempt, paperId) => {
     const paperQs = questions.filter(q => q.paperId === paperId);
@@ -343,55 +350,36 @@ function ExamHistory({ user }) {
 
   return (
     <div className="fade-in" style={{ textAlign: 'left' }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>📊 Exam History &amp; Scorecards</h2>
-        <p>Comprehensive records of conducted proctored examinations, student participation, and score summaries.</p>
+      <div className="page-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2>📊 Exam History &amp; Scorecards</h2>
+          <p>Comprehensive records of conducted proctored examinations, student participation, and score summaries.</p>
+        </div>
+        <button
+          onClick={loadHistoricalAttempts}
+          disabled={isHistoryLoading}
+          className="btn btn-secondary btn-sm"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.45rem 0.9rem', fontSize: '0.82rem', fontWeight: 600 }}
+          title="Refresh complete exam history from database"
+        >
+          {isHistoryLoading ? '⏳ Refreshing...' : '🔄 Refresh History'}
+        </button>
       </div>
 
-      {/* Historical Data Loading Banner */}
-      {!hasHistoryLoaded ? (
+      {isHistoryLoading && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          padding: '0.85rem 1.25rem',
+          gap: '0.6rem',
+          padding: '0.65rem 1rem',
           background: 'rgba(59, 130, 246, 0.08)',
           border: '1px solid rgba(59, 130, 246, 0.25)',
-          borderRadius: '10px',
-          marginBottom: '1.5rem'
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#2563eb' }}>
-              ⚡ Showing Recent Exam Attempts ({attempts.length} attempts in fast memory)
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              To save database quota, historical records older than 24 hours are not streamed automatically.
-            </div>
-          </div>
-          <button
-            onClick={loadHistoricalAttempts}
-            disabled={isHistoryLoading}
-            className="btn btn-secondary"
-            style={{ padding: '0.45rem 1rem', fontSize: '0.84rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            {isHistoryLoading ? '⏳ Loading History...' : '📂 Load Full Semester History'}
-          </button>
-        </div>
-      ) : (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.65rem 1rem',
-          background: 'rgba(16, 185, 129, 0.08)',
-          border: '1px solid rgba(16, 185, 129, 0.25)',
           borderRadius: '8px',
           marginBottom: '1.5rem'
         }}>
-          <span style={{ fontSize: '0.85rem', color: '#059669', fontWeight: 600 }}>
-            ✅ Full Semester History Loaded ({attempts.length} attempts available).
+          <span className="live-pulse-dot" style={{ width: '8px', height: '8px', background: '#3b82f6' }}></span>
+          <span style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+            Syncing full semester examination results...
           </span>
         </div>
       )}

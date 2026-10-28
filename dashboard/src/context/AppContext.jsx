@@ -412,9 +412,10 @@ export function AppProvider({ children }) {
       refreshUsers(),
       refreshPapers(),
       refreshExams(),
-      refreshQuestions()
+      refreshQuestions(),
+      loadHistoricalAttempts()
     ]);
-  }, [refreshUsers, refreshPapers, refreshExams, refreshQuestions]);
+  }, [refreshUsers, refreshPapers, refreshExams, refreshQuestions, loadHistoricalAttempts]);
 
   // Initial load of static collections once when user logs in
   useEffect(() => {
@@ -448,28 +449,28 @@ export function AppProvider({ children }) {
     );
 
     const unsubAttempts = onSnapshot(attemptsQuery, (snapshot) => {
-      const list = [];
+      const liveList = [];
       snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+        liveList.push({ id: docSnap.id, ...docSnap.data() });
       });
 
       setAttempts(prev => {
-        // If full semester history was loaded, merge today's updates into history
-        if (hasHistoryLoaded && prev.length > list.length) {
-          const liveMap = new Map(list.map(item => [item.id, item]));
-          const merged = prev.map(oldItem => liveMap.has(oldItem.id) ? liveMap.get(oldItem.id) : oldItem);
-          const existingIds = new Set(prev.map(p => p.id));
-          list.forEach(item => {
-            if (!existingIds.has(item.id)) merged.push(item);
-          });
-          return merged;
-        }
-        return list;
+        // If history is not yet populated, use live list
+        if (prev.length === 0) return liveList;
+
+        // Merge live updates into full history without erasing older records!
+        const liveMap = new Map(liveList.map(item => [item.id, item]));
+        const updated = prev.map(oldItem => liveMap.has(oldItem.id) ? liveMap.get(oldItem.id) : oldItem);
+        const existingIds = new Set(prev.map(p => p.id));
+        liveList.forEach(item => {
+          if (!existingIds.has(item.id)) updated.push(item);
+        });
+        return updated;
       });
     }, (err) => console.error('Error syncing 24h exam_attempts in AppContext:', err));
 
     return () => unsubAttempts();
-  }, [user, isLiveSyncActive, hasHistoryLoaded]);
+  }, [user, isLiveSyncActive]);
 
   // On-Demand loader for full historical attempts (for ExamHistory)
   const loadHistoricalAttempts = useCallback(async () => {
