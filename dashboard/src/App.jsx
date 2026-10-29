@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { auth } from './firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
 import { useApp } from './context/AppContext';
 import { useRealtimeMetrics } from './hooks/useRealtimeMetrics';
 import Login from './components/Login';
@@ -141,7 +142,8 @@ function App() {
   };
 
   // ── Role-Based System Maintenance Mode State & Handlers ──────────────
-  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [maintLoading, setMaintLoading] = useState(false);
+  const maintenanceLoading = maintLoading; // alias to prevent any undeclared variable references
   const [maintForm, setMaintForm] = useState({
     enabled: false,
     message: 'System upgrade in progress. Regular services will resume shortly.',
@@ -160,30 +162,46 @@ function App() {
 
   const handleSaveMaintenanceSettings = async (e, overrideEnabled) => {
     if (e && e.preventDefault) e.preventDefault();
-    setMaintenanceLoading(true);
+    setMaintLoading(true);
     try {
       const isActivating = overrideEnabled !== undefined ? overrideEnabled : maintForm.enabled;
-      const token = await getAuthToken();
       const payload = {
         enabled: isActivating,
         message: maintForm.message,
-        estimatedEndTime: maintForm.estimatedEndTime
+        estimatedEndTime: maintForm.estimatedEndTime,
+        updatedAt: new Date().toISOString()
       };
-      const response = await fetch(`${API_BASE_URL}/admin/maintenance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await parseApiResponse(response);
+
+      // 1. Direct update to Firestore (instant)
+      if (db) {
+        await setDoc(doc(db, 'settings', 'system_maintenance'), payload, { merge: true });
+      }
+
+      // 2. Notify Backend API with short timeout so it never hangs
+      try {
+        const token = await getAuthToken();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        await fetch(`${API_BASE_URL}/admin/maintenance`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (apiErr) {
+        console.warn('Backend notify took longer or was aborted (Firestore already saved):', apiErr.message);
+      }
+
       setMaintForm(payload);
-      alert(data.message || 'Maintenance settings updated!');
+      alert('Maintenance settings updated successfully!');
     } catch (err) {
       alert('Failed to update maintenance settings: ' + err.message);
     } finally {
-      setMaintenanceLoading(false);
+      setMaintLoading(false);
     }
   };
 
@@ -597,7 +615,7 @@ function App() {
               </button>
               <button
                 onClick={() => handleSaveMaintenanceSettings(null, false)}
-                disabled={maintenanceLoading}
+                disabled={maintLoading}
                 style={{
                   background: 'rgba(0, 0, 0, 0.35)',
                   color: '#ffffff',
@@ -609,7 +627,7 @@ function App() {
                   cursor: 'pointer'
                 }}
               >
-                {maintenanceLoading ? '...' : '🟢 Deactivate Now'}
+                {maintLoading ? '...' : '🟢 Deactivate Now'}
               </button>
             </div>
           </div>
@@ -1151,13 +1169,7 @@ function App() {
                       className="btn"
                       style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}
                       disabled={maintLoading}
-                      onClick={() => {
-                        setMaintForm(prev => ({ ...prev, enabled: false }));
-                        setTimeout(() => {
-                          const fakeEvent = { preventDefault: () => {} };
-                          handleSaveMaintenanceSettings(fakeEvent);
-                        }, 50);
-                      }}
+                      onClick={() => handleSaveMaintenanceSettings(null, false)}
                     >
                       Turn Off Maintenance
                     </button>
