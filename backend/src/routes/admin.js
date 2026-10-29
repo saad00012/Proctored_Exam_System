@@ -370,6 +370,116 @@ router.delete('/users/:uid', verifyToken, async (req, res) => {
   }
 });
 
+// Batch Delete Students by Department & Optional Semester - ADMIN ONLY
+router.post('/users/batch-delete-by-department', verifyToken, async (req, res) => {
+  try {
+    if (!isAdmin(req.user) && !isTeacherOrAdmin(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
+    const { department, semester, confirm } = req.body;
+    if (!department) {
+      return res.status(400).json({ error: 'Department is required.' });
+    }
+
+    if (confirm !== true && confirm !== 'CONFIRM_DELETE') {
+      return res.status(400).json({ error: 'Explicit confirmation required. Pass confirm: "CONFIRM_DELETE".' });
+    }
+
+    const usersSnap = await db.collection('users')
+      .where('role', '==', 'student')
+      .get();
+
+    const matchedStudents = [];
+    usersSnap.forEach(doc => {
+      const data = doc.data();
+      const userDept = (data.department || '').trim().toLowerCase();
+      const userDepts = (data.departments || []).map(d => String(d).trim().toLowerCase());
+      const targetDept = department.trim().toLowerCase();
+
+      const isDeptMatch = 
+        userDept === targetDept ||
+        userDepts.includes(targetDept) ||
+        (targetDept.includes('aids') || targetDept.includes('ai & ds')) &&
+        (userDept.includes('ai & ds') || userDept.includes('aids') || userDept.includes('artificial intelligence') ||
+         userDepts.some(d => d.includes('ai & ds') || d.includes('aids')));
+
+      let isSemMatch = true;
+      if (semester && semester !== 'All') {
+        const cleanSem = String(semester).replace(/[^0-9]/g, '');
+        const userSem = String(data.semester || '').replace(/[^0-9]/g, '');
+        isSemMatch = cleanSem === userSem || String(data.semester).toLowerCase() === String(semester).toLowerCase();
+      }
+
+      if (isDeptMatch && isSemMatch) {
+        matchedStudents.push({
+          uid: doc.id,
+          name: data.name || 'Unknown',
+          email: data.email || '',
+          prn: data.prnNumber || 'N/A',
+          semester: data.semester || 'N/A'
+        });
+      }
+    });
+
+    if (matchedStudents.length === 0) {
+      return res.json({ success: true, count: 0, message: 'No students found matching the specified filter.' });
+    }
+
+    let deletedCount = 0;
+    const errors = [];
+
+    for (const student of matchedStudents) {
+      try {
+        // 1. Delete from Firebase Auth
+        try {
+          await admin.auth().deleteUser(student.uid);
+        } catch (authErr) {
+          if (authErr.code !== 'auth/user-not-found') {
+            console.warn(`Auth delete error for ${student.uid}:`, authErr.message);
+          }
+        }
+
+        // 2. Delete from Firestore users
+        await db.collection('users').doc(student.uid).delete();
+
+        // 3. Delete linked exam attempts
+        const attemptsSnap = await db.collection('exam_attempts').where('studentId', '==', student.uid).get();
+        if (!attemptsSnap.empty) {
+          const batch = db.batch();
+          attemptsSnap.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+
+        deletedCount++;
+      } catch (err) {
+        errors.push({ uid: student.uid, error: err.message });
+      }
+    }
+
+    // Audit log
+    await db.collection('audit_logs').add({
+      action: 'batch_delete_students',
+      department,
+      semester: semester || 'All',
+      deletedCount,
+      performedBy: req.user.email || req.user.name || 'Admin',
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      count: deletedCount,
+      message: `Successfully deleted ${deletedCount} student(s) from ${department}.`,
+      deletedStudents: matchedStudents.map(s => ({ name: s.name, email: s.email, prn: s.prn, semester: s.semester })),
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Error in batch-delete-by-department:', error);
+    res.status(500).json({ error: 'Failed to batch delete students: ' + error.message });
+  }
+});
+
 // Update a user's profile (Firestore) - ADMIN, SELF, or FACULTY for department students
 router.put('/users/:uid', verifyToken, async (req, res) => {
   try {
@@ -949,6 +1059,68 @@ router.post('/heal-all-students', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Error during heal-all-students:', err);
     res.status(500).json({ error: 'Failed to complete system self-heal: ' + err.message });
+  }
+});
+
+// ── Role-Based System Maintenance Endpoints ──────────────────────────────
+
+// GET /admin/maintenance — View current maintenance settings
+router.get('/maintenance', verifyToken, async (req, res) => {
+  try {
+    const { getMaintenanceConfig } = require('../middleware/maintenance');
+    const config = await getMaintenanceConfig();
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/maintenance — Toggle/Configure System Maintenance (SUPER ADMIN ONLY)
+router.post('/maintenance', verifyToken, async (req, res) => {
+  if (!isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Forbidden: Only administrators can configure system maintenance mode.' });
+  }
+
+  const { enabled, message, estimatedEndTime } = req.body;
+  try {
+    if (!db) return res.status(500).json({ error: 'Database not connected' });
+
+    const payload = {
+      enabled: Boolean(enabled),
+      message: String(message || 'System upgrade in progress. Regular services will resume shortly.').trim(),
+      estimatedEndTime: String(estimatedEndTime || '').trim(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user.email || req.user.name || 'Admin'
+    };
+
+    await db.collection('settings').doc('system_maintenance').set(payload, { merge: true });
+
+    // Instantly update in-memory cache
+    const { setMaintenanceCache } = require('../middleware/maintenance');
+    setMaintenanceCache(payload);
+
+    // Audit log
+    try {
+      await db.collection('audit_logs').add({
+        timestamp: new Date().toISOString(),
+        action: payload.enabled ? 'enable_maintenance_mode' : 'disable_maintenance_mode',
+        teacherEmail: req.user.email,
+        teacherName: req.user.name || 'Super Admin',
+        details: payload.enabled 
+          ? `Activated Maintenance Mode: Faculty & Students blocked. Message: "${payload.message}"` 
+          : 'Deactivated Maintenance Mode: System restored to normal operations for all users.'
+      });
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: payload.enabled 
+        ? '⚠️ System Maintenance Mode ACTIVATED. Faculty & Students are now blocked.' 
+        : '✅ System Maintenance Mode DEACTIVATED. System is open to all users.',
+      maintenance: payload
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

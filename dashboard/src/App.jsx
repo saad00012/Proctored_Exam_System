@@ -36,7 +36,8 @@ function App() {
     pauseReason,
     resumeLiveSync,
     toggleLiveSync,
-    refreshAllStaticData
+    refreshAllStaticData,
+    maintenanceConfig
   } = useApp();
 
   const { metrics, liveAlerts } = useRealtimeMetrics();
@@ -136,6 +137,53 @@ function App() {
       alert('Failed to save app update policy: ' + err.message);
     } finally {
       setAppVersionLoading(false);
+    }
+  };
+
+  // ── Role-Based System Maintenance Mode State & Handlers ──────────────
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [maintForm, setMaintForm] = useState({
+    enabled: false,
+    message: 'System upgrade in progress. Regular services will resume shortly.',
+    estimatedEndTime: ''
+  });
+
+  useEffect(() => {
+    if (maintenanceConfig) {
+      setMaintForm({
+        enabled: Boolean(maintenanceConfig.enabled),
+        message: maintenanceConfig.message || 'System upgrade in progress. Regular services will resume shortly.',
+        estimatedEndTime: maintenanceConfig.estimatedEndTime || ''
+      });
+    }
+  }, [maintenanceConfig]);
+
+  const handleSaveMaintenanceSettings = async (e, overrideEnabled) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setMaintenanceLoading(true);
+    try {
+      const isActivating = overrideEnabled !== undefined ? overrideEnabled : maintForm.enabled;
+      const token = await getAuthToken();
+      const payload = {
+        enabled: isActivating,
+        message: maintForm.message,
+        estimatedEndTime: maintForm.estimatedEndTime
+      };
+      const response = await fetch(`${API_BASE_URL}/admin/maintenance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await parseApiResponse(response);
+      setMaintForm(payload);
+      alert(data.message || 'Maintenance settings updated!');
+    } catch (err) {
+      alert('Failed to update maintenance settings: ' + err.message);
+    } finally {
+      setMaintenanceLoading(false);
     }
   };
 
@@ -252,6 +300,68 @@ function App() {
                        role === 'admin' || 
                        user?.email?.toLowerCase().includes('admin') || 
                        user?.email === 'yash.chiplunkar@dnyanshree.edu.in';
+
+  // Role-Based Maintenance Gate: Non-admin users see full maintenance screen
+  if (maintenanceConfig?.enabled && !isSuperAdmin) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'var(--bg-main, #0f172a)',
+        padding: '2rem',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          background: 'var(--bg-card, #1e293b)',
+          border: '1px solid rgba(245, 158, 11, 0.4)',
+          borderRadius: '18px',
+          maxWidth: '560px',
+          width: '100%',
+          padding: '2.5rem',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        }}>
+          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🛠️</div>
+          <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
+            SCHEDULED SYSTEM MAINTENANCE
+          </span>
+          <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#f59e0b', margin: '0.5rem 0 1rem' }}>
+            Exam Console Temporarily Locked
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+            {maintenanceConfig.message || 'The examination system is currently undergoing scheduled maintenance and updates. Regular faculty and student services will resume shortly.'}
+          </p>
+          {maintenanceConfig.estimatedEndTime && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: '8px',
+              padding: '0.75rem 1rem',
+              color: '#f59e0b',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              marginBottom: '1.5rem'
+            }}>
+              ⏱️ Expected Completion: {maintenanceConfig.estimatedEndTime}
+            </div>
+          )}
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+            Faculty & student console actions are paused. Only Super Admins have active system access.
+          </p>
+          <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
+            <button onClick={() => window.location.reload()} className="btn btn-secondary" style={{ padding: '0.55rem 1.3rem', fontSize: '0.85rem' }}>
+              🔄 Check Status
+            </button>
+            <button onClick={handleLogout} className="btn" style={{ padding: '0.55rem 1.3rem', fontSize: '0.85rem', background: 'transparent', color: 'var(--text-muted)' }}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -442,6 +552,68 @@ function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
+        {/* Super Admin Maintenance Mode Active Banner */}
+        {maintenanceConfig?.enabled && isSuperAdmin && (
+          <div style={{
+            background: 'linear-gradient(90deg, #b45309, #d97706)',
+            color: '#ffffff',
+            padding: '0.75rem 1.25rem',
+            borderRadius: '10px',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            boxShadow: '0 4px 14px rgba(217, 119, 6, 0.35)',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.4rem' }}>🛠️</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.02em' }}>
+                  SYSTEM MAINTENANCE MODE ACTIVE
+                </div>
+                <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>
+                  Faculty &amp; Student access is locked. You have unrestricted Admin bypass access.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                onClick={() => setActiveTab('maintenance')}
+                style={{
+                  background: '#ffffff',
+                  color: '#b45309',
+                  border: 'none',
+                  padding: '0.4rem 0.9rem',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  cursor: 'pointer'
+                }}
+              >
+                ⚙️ Maintenance Settings
+              </button>
+              <button
+                onClick={() => handleSaveMaintenanceSettings(null, false)}
+                disabled={maintenanceLoading}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  padding: '0.4rem 0.9rem',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  cursor: 'pointer'
+                }}
+              >
+                {maintenanceLoading ? '...' : '🟢 Deactivate Now'}
+              </button>
+            </div>
+          </div>
+        )}
         <header className="dashboard-header">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
@@ -890,6 +1062,116 @@ function App() {
               <p style={{ color: 'var(--text-secondary)' }}>
                 Configure academic departments, global exam policies, timeouts, and clean databases.
               </p>
+            </div>
+
+            {/* System Maintenance Control Panel */}
+            <div className="glass-card" style={{
+              borderLeft: maintForm.enabled ? '4px solid #f59e0b' : '4px solid #10b981',
+              background: maintForm.enabled ? 'rgba(245, 158, 11, 0.05)' : 'var(--glass-bg)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    🛠️ System Maintenance Mode
+                    <span style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '12px',
+                      background: maintForm.enabled ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      color: maintForm.enabled ? '#ef4444' : '#10b981',
+                      border: maintForm.enabled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+                    }}>
+                      {maintForm.enabled ? '● MAINTENANCE ACTIVE (STUDENTS & FACULTY BLOCKED)' : '● NORMAL OPERATIONAL'}
+                    </span>
+                  </h3>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    When active, the exam system is completely offline for students & faculty (returns HTTP 503). <strong>Administrators have uninterrupted full access.</strong>
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveMaintenanceSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  background: maintForm.enabled ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <input
+                    type="checkbox"
+                    id="maintToggle"
+                    style={{ width: '1.25rem', height: '1.25rem', cursor: 'pointer', accentColor: '#f59e0b' }}
+                    checked={maintForm.enabled}
+                    onChange={(e) => setMaintForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <label htmlFor="maintToggle" style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.95rem' }}>
+                    {maintForm.enabled ? 'Disable normal access for Faculty & Students' : 'Enable System Maintenance Mode'}
+                  </label>
+                </div>
+
+                <div className="grid-cols-2" style={{ gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                      Maintenance Notice to Faculty & Students
+                    </label>
+                    <textarea
+                      className="input-field"
+                      rows="2"
+                      value={maintForm.message}
+                      onChange={(e) => setMaintForm(prev => ({ ...prev, message: e.target.value }))}
+                      placeholder="e.g. System is undergoing scheduled maintenance. Please check back later."
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                      Estimated Completion Time / Message
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={maintForm.estimatedEndTime}
+                      onChange={(e) => setMaintForm(prev => ({ ...prev, estimatedEndTime: e.target.value }))}
+                      placeholder="e.g. Today at 2:00 PM IST or in 45 minutes"
+                    />
+                    <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                      Shown to students on app launch & portal login attempts.
+                    </small>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  {maintForm.enabled && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+                      disabled={maintLoading}
+                      onClick={() => {
+                        setMaintForm(prev => ({ ...prev, enabled: false }));
+                        setTimeout(() => {
+                          const fakeEvent = { preventDefault: () => {} };
+                          handleSaveMaintenanceSettings(fakeEvent);
+                        }, 50);
+                      }}
+                    >
+                      Turn Off Maintenance
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={maintLoading}
+                    style={{ background: maintForm.enabled ? '#f59e0b' : 'var(--primary)', borderColor: maintForm.enabled ? '#f59e0b' : 'var(--primary)' }}
+                  >
+                    {maintLoading ? 'Saving...' : maintForm.enabled ? '⚠️ Update Active Maintenance' : '💾 Save Maintenance Settings'}
+                  </button>
+                </div>
+              </form>
             </div>
 
             {/* Department Management */}

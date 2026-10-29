@@ -38,6 +38,15 @@ export function AppProvider({ children }) {
   const [defaultDuration, setDefaultDuration] = useState(45);
   const [warningThreshold, setWarningThreshold] = useState(3);
 
+  // System Maintenance Mode State
+  const [maintenanceConfig, setMaintenanceConfig] = useState({
+    enabled: false,
+    message: 'System upgrade in progress. Regular services will resume shortly.',
+    estimatedEndTime: '',
+    updatedAt: null,
+    updatedBy: 'Admin'
+  });
+
   // Inactivity & Sleep / Auto-Pause Mode state (to avoid runaway read charges)
   const [isLiveSyncActive, setIsLiveSyncActive] = useState(true);
   const [isIdlePaused, setIsIdlePaused] = useState(false);
@@ -147,6 +156,34 @@ export function AppProvider({ children }) {
     }, (err) => console.error('Error syncing departments in AppContext:', err));
 
     return () => unsubDept();
+  }, []);
+
+  // Firestore sync for settings/system_maintenance
+  useEffect(() => {
+    if (!db) return;
+    const maintDocRef = doc(db, 'settings', 'system_maintenance');
+    const unsubMaint = onSnapshot(maintDocRef, (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setMaintenanceConfig({
+          enabled: Boolean(d.enabled),
+          message: d.message || 'System upgrade in progress. Regular services will resume shortly.',
+          estimatedEndTime: d.estimatedEndTime || '',
+          updatedAt: d.updatedAt || null,
+          updatedBy: d.updatedBy || 'Admin'
+        });
+      } else {
+        setMaintenanceConfig({
+          enabled: false,
+          message: 'System upgrade in progress. Regular services will resume shortly.',
+          estimatedEndTime: '',
+          updatedAt: null,
+          updatedBy: 'Admin'
+        });
+      }
+    }, (err) => console.warn('Maintenance sync notice:', err.message));
+
+    return () => unsubMaint();
   }, []);
 
   // Auth Observer
@@ -553,7 +590,10 @@ export function AppProvider({ children }) {
     // Historical Attempts Loader
     loadHistoricalAttempts,
     isHistoryLoading,
-    hasHistoryLoaded
+    hasHistoryLoaded,
+    // System Maintenance
+    maintenanceConfig,
+    setMaintenanceConfig
   }), [
     user,
     role,
@@ -584,7 +624,8 @@ export function AppProvider({ children }) {
     refreshQuestions,
     loadHistoricalAttempts,
     isHistoryLoading,
-    hasHistoryLoaded
+    hasHistoryLoaded,
+    maintenanceConfig
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

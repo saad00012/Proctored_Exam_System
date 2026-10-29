@@ -74,7 +74,7 @@ const adminLimiter = rateLimit({
   max: 1500,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === '/broadcast-notice' || req.path === '/app-version'
+  skip: (req) => req.path === '/broadcast-notice' || req.path === '/app-version' || req.path === '/maintenance'
 });
 
 app.use(generalLimiter);

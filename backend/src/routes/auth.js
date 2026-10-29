@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
 const { verifyToken } = require('../middleware/auth');
+const { getMaintenanceConfig } = require('../middleware/maintenance');
 
 // 1. Health Check
 router.get('/health', (req, res) => {
@@ -12,8 +13,28 @@ router.get('/health', (req, res) => {
   });
 });
 
+// 1.1 Public Maintenance Status Check
+router.get('/maintenance-status', async (req, res) => {
+  try {
+    const config = await getMaintenanceConfig();
+    res.json(config);
+  } catch (err) {
+    res.json({ enabled: false, message: 'Online' });
+  }
+});
+
 // 2. Validate email domain, mobile, and PRN uniqueness before registration
 router.post('/register-check', async (req, res) => {
+  // Block new student registrations during maintenance
+  const maintenance = await getMaintenanceConfig();
+  if (maintenance && maintenance.enabled) {
+    return res.status(503).json({
+      allowed: false,
+      error: maintenance.message || 'System Maintenance: Student registration is temporarily paused during scheduled updates.',
+      code: 'SYSTEM_MAINTENANCE'
+    });
+  }
+
   const { email, phoneNumber, prnNumber } = req.body;
   if (!email || !phoneNumber) {
     return res.status(400).json({ error: 'Email and phone number are required.' });

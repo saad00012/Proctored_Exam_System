@@ -124,6 +124,21 @@ const verifyToken = async (req, res, next) => {
       }, { merge: true }).catch(err => console.warn('Could not auto-heal user doc in Firestore:', err.message));
     }
 
+    // Role-based System Maintenance Gate: If maintenance is ON, only Admins proceed
+    const { getMaintenanceConfig } = require('./maintenance');
+    const maintenance = await getMaintenanceConfig();
+    if (maintenance && maintenance.enabled && !isAdmin(req.user)) {
+      return res.status(503).json({
+        error: maintenance.message || 'System Maintenance: The exam portal is undergoing maintenance. Access is temporarily restricted to administrators.',
+        code: 'SYSTEM_MAINTENANCE',
+        maintenance: {
+          enabled: true,
+          message: maintenance.message,
+          estimatedEndTime: maintenance.estimatedEndTime
+        }
+      });
+    }
+
     next();
   } catch (error) {
     console.error('❌ Token verification failed:', error.message);

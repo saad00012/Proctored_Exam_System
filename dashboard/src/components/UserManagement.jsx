@@ -545,6 +545,53 @@ function UserManagement({ user }) {
     }
   };
 
+  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
+
+  const handleBatchDeleteByFilter = async () => {
+    if (selectedDept === 'All') {
+      window.alert('Please select a specific Department first (e.g. "AI & DS Engineering") to prevent deleting all students across the whole college.');
+      return;
+    }
+
+    const deptStudentsCount = filteredStudents.length;
+    if (deptStudentsCount === 0) {
+      window.alert('No students found matching the selected filter.');
+      return;
+    }
+
+    const confirmMsg = `⚠️ IRREVERSIBLE ACTION:\n\nAre you sure you want to permanently delete ALL ${deptStudentsCount} student(s) currently registered under:\nDepartment: ${selectedDept}\nSemester: ${selectedSem}\n\nThis will permanently delete their Firebase Auth login accounts, Firestore profiles, and exam attempts.\n\nType "DELETE" to confirm:`;
+    
+    const userInput = window.prompt(confirmMsg);
+    if (userInput !== 'DELETE') {
+      if (userInput !== null) window.alert('Deletion cancelled. Confirmation text did not match.');
+      return;
+    }
+
+    setBatchDeleteLoading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/admin/users/batch-delete-by-department`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          department: selectedDept,
+          semester: selectedSem,
+          confirm: 'CONFIRM_DELETE'
+        })
+      });
+      const data = await parseApiResponse(res);
+      window.alert(`✅ BATCH DELETE COMPLETE:\n\n${data.message}`);
+      showToast(data.message, 'success');
+      if (refreshUsers) refreshUsers();
+      loadUsers();
+    } catch (err) {
+      showToast('Batch delete failed: ' + err.message, 'danger');
+      window.alert('Batch delete failed: ' + err.message);
+    } finally {
+      setBatchDeleteLoading(false);
+    }
+  };
+
   // Filters logic
   const filteredTeachers = teachers.filter((t) => {
     const matchesSearch =
@@ -753,6 +800,36 @@ function UserManagement({ user }) {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+          </div>
+        )}
+
+        {activeTab === 'students' && isSuperAdmin && (
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={handleBatchDeleteByFilter}
+              disabled={batchDeleteLoading || filteredStudents.length === 0}
+              className="btn"
+              style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                padding: '0.55rem 1.1rem',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                cursor: filteredStudents.length === 0 ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Permanently delete all students matching current department & semester filter"
+            >
+              <span>🗑️</span>
+              {batchDeleteLoading 
+                ? 'Deleting Students...' 
+                : `Batch Delete ${selectedDept === 'All' ? 'Filtered Students' : selectedDept.replace(' Engineering', '')} (${filteredStudents.length})`}
+            </button>
           </div>
         )}
       </div>
